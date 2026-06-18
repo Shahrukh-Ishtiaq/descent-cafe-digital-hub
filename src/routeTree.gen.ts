@@ -17,7 +17,6 @@ import { Route as AuthRouteImport } from './routes/auth'
 import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AuthenticatedOrdersRouteImport } from './routes/_authenticated/orders'
-import { Route as AuthenticatedAdminRouteImport } from './routes/_authenticated/admin'
 
 const SitemapDotxmlRoute = SitemapDotxmlRouteImport.update({
   id: '/sitemap.xml',
@@ -58,11 +57,6 @@ const AuthenticatedOrdersRoute = AuthenticatedOrdersRouteImport.update({
   path: '/orders',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
-const AuthenticatedAdminRoute = AuthenticatedAdminRouteImport.update({
-  id: '/admin',
-  path: '/admin',
-  getParentRoute: () => AuthenticatedRouteRoute,
-} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -71,7 +65,6 @@ export interface FileRoutesByFullPath {
   '/contact': typeof ContactRoute
   '/menu': typeof MenuRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
-  '/admin': typeof AuthenticatedAdminRoute
   '/orders': typeof AuthenticatedOrdersRoute
 }
 export interface FileRoutesByTo {
@@ -81,7 +74,6 @@ export interface FileRoutesByTo {
   '/contact': typeof ContactRoute
   '/menu': typeof MenuRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
-  '/admin': typeof AuthenticatedAdminRoute
   '/orders': typeof AuthenticatedOrdersRoute
 }
 export interface FileRoutesById {
@@ -93,7 +85,6 @@ export interface FileRoutesById {
   '/contact': typeof ContactRoute
   '/menu': typeof MenuRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
-  '/_authenticated/admin': typeof AuthenticatedAdminRoute
   '/_authenticated/orders': typeof AuthenticatedOrdersRoute
 }
 export interface FileRouteTypes {
@@ -105,7 +96,6 @@ export interface FileRouteTypes {
     | '/contact'
     | '/menu'
     | '/sitemap.xml'
-    | '/admin'
     | '/orders'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -115,7 +105,6 @@ export interface FileRouteTypes {
     | '/contact'
     | '/menu'
     | '/sitemap.xml'
-    | '/admin'
     | '/orders'
   id:
     | '__root__'
@@ -126,7 +115,6 @@ export interface FileRouteTypes {
     | '/contact'
     | '/menu'
     | '/sitemap.xml'
-    | '/_authenticated/admin'
     | '/_authenticated/orders'
   fileRoutesById: FileRoutesById
 }
@@ -198,23 +186,14 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedOrdersRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
-    '/_authenticated/admin': {
-      id: '/_authenticated/admin'
-      path: '/admin'
-      fullPath: '/admin'
-      preLoaderRoute: typeof AuthenticatedAdminRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
-    }
   }
 }
 
 interface AuthenticatedRouteRouteChildren {
-  AuthenticatedAdminRoute: typeof AuthenticatedAdminRoute
   AuthenticatedOrdersRoute: typeof AuthenticatedOrdersRoute
 }
 
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
-  AuthenticatedAdminRoute: AuthenticatedAdminRoute,
   AuthenticatedOrdersRoute: AuthenticatedOrdersRoute,
 }
 
