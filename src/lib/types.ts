@@ -14,6 +14,7 @@ export interface Product {
   image_url: string | null;
   is_available: boolean;
   sort_order: number;
+  stock_quantity: number;
 }
 
 export interface OrderItem {
@@ -36,5 +37,31 @@ export interface Order {
   status: OrderStatus;
   created_at: string;
   updated_at: string;
+  latitude: number | null;
+  longitude: number | null;
+  location_label: string | null;
+  assigned_rider_id: string | null;
   order_items?: OrderItem[];
 }
+
+export interface Promotion {
+  id: string;
+  title: string;
+  description: string | null;
+  discount_percent: number;
+  promo_code: string | null;
+  is_active: boolean;
+  starts_at: string | null;
+  ends_at: string | null;
+  created_at: string;
+}
+
+export interface Profile {
+  id: string;
+  full_name: string | null;
+  phone: string | null;
+  address: string | null;
+  created_at?: string;
+}
+
+export type AppRole = "admin" | "staff" | "rider" | "customer";

@@ -23,6 +23,7 @@ interface AuthContextValue {
   roles: string[];
   isAdmin: boolean;
   isStaff: boolean;
+  isRider: boolean;
   loading: boolean;
   signOut: () => Promise<void>;
   refreshProfile: () => Promise<void>;
@@ -73,6 +74,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     roles,
     isAdmin: roles.includes("admin"),
     isStaff: roles.includes("admin") || roles.includes("staff"),
+    isRider: roles.includes("rider"),
     loading,
     signOut: async () => {
       await supabase.auth.signOut();

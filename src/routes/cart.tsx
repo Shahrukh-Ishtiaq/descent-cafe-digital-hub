@@ -1,6 +1,6 @@
 import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { Minus, Plus, Trash2, ShoppingBag } from "lucide-react";
+import { Minus, Plus, Trash2, ShoppingBag, MapPin, LocateFixed } from "lucide-react";
 import { toast } from "sonner";
 import { SiteLayout } from "@/components/SiteLayout";
 import { Button } from "@/components/ui/button";
@@ -28,6 +28,10 @@ function CartPage() {
   const [address, setAddress] = useState("");
   const [notes, setNotes] = useState("");
   const [placing, setPlacing] = useState(false);
+  const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(
+    null,
+  );
+  const [locating, setLocating] = useState(false);
 
   useEffect(() => {
     if (profile) {
@@ -36,6 +40,26 @@ function CartPage() {
       setAddress((v) => v || profile.address || "");
     }
   }, [profile]);
+
+  const detectLocation = () => {
+    if (!("geolocation" in navigator)) {
+      toast.error("Location is not supported on this device.");
+      return;
+    }
+    setLocating(true);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setCoords({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+        setLocating(false);
+        toast.success("Location captured — your rider can navigate to you.");
+      },
+      () => {
+        setLocating(false);
+        toast.error("Could not get location. Please allow location access.");
+      },
+      { enableHighAccuracy: true, timeout: 10000 },
+    );
+  };
 
   const placeOrder = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -58,6 +82,9 @@ function CartPage() {
           notes: notes.trim() || null,
           total: grand,
           status: "pending",
+          latitude: coords?.lat ?? null,
+          longitude: coords?.lng ?? null,
+          location_label: coords ? `${coords.lat},${coords.lng}` : null,
         })
         .select()
         .single();
@@ -136,6 +163,28 @@ function CartPage() {
             <div className="space-y-1.5">
               <Label htmlFor="caddr">Delivery address</Label>
               <Textarea id="caddr" value={address} onChange={(e) => setAddress(e.target.value)} required maxLength={300} placeholder="House #, street, area, Karachi" />
+              <Button
+                type="button"
+                variant={coords ? "secondary" : "outline"}
+                size="sm"
+                className="w-full"
+                onClick={detectLocation}
+                disabled={locating}
+              >
+                {coords ? (
+                  <>
+                    <MapPin className="size-4" /> Location captured ✓
+                  </>
+                ) : (
+                  <>
+                    <LocateFixed className="size-4" />
+                    {locating ? "Detecting…" : "Use my current location"}
+                  </>
+                )}
+              </Button>
+              <p className="text-xs text-muted-foreground">
+                Sharing your GPS location helps the rider find you faster.
+              </p>
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="cnotes">Order notes (optional)</Label>

@@ -62,9 +62,13 @@ export type Database = {
       orders: {
         Row: {
           address: string
+          assigned_rider_id: string | null
           created_at: string
           customer_name: string
           id: string
+          latitude: number | null
+          location_label: string | null
+          longitude: number | null
           notes: string | null
           phone: string
           status: Database["public"]["Enums"]["order_status"]
@@ -74,9 +78,13 @@ export type Database = {
         }
         Insert: {
           address: string
+          assigned_rider_id?: string | null
           created_at?: string
           customer_name: string
           id?: string
+          latitude?: number | null
+          location_label?: string | null
+          longitude?: number | null
           notes?: string | null
           phone: string
           status?: Database["public"]["Enums"]["order_status"]
@@ -86,9 +94,13 @@ export type Database = {
         }
         Update: {
           address?: string
+          assigned_rider_id?: string | null
           created_at?: string
           customer_name?: string
           id?: string
+          latitude?: number | null
+          location_label?: string | null
+          longitude?: number | null
           notes?: string | null
           phone?: string
           status?: Database["public"]["Enums"]["order_status"]
@@ -109,6 +121,7 @@ export type Database = {
           name: string
           price: number
           sort_order: number
+          stock_quantity: number
           updated_at: string
         }
         Insert: {
@@ -121,6 +134,7 @@ export type Database = {
           name: string
           price: number
           sort_order?: number
+          stock_quantity?: number
           updated_at?: string
         }
         Update: {
@@ -133,6 +147,7 @@ export type Database = {
           name?: string
           price?: number
           sort_order?: number
+          stock_quantity?: number
           updated_at?: string
         }
         Relationships: []
@@ -160,6 +175,45 @@ export type Database = {
           full_name?: string | null
           id?: string
           phone?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      promotions: {
+        Row: {
+          created_at: string
+          description: string | null
+          discount_percent: number
+          ends_at: string | null
+          id: string
+          is_active: boolean
+          promo_code: string | null
+          starts_at: string | null
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          discount_percent?: number
+          ends_at?: string | null
+          id?: string
+          is_active?: boolean
+          promo_code?: string | null
+          starts_at?: string | null
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          discount_percent?: number
+          ends_at?: string | null
+          id?: string
+          is_active?: boolean
+          promo_code?: string | null
+          starts_at?: string | null
+          title?: string
           updated_at?: string
         }
         Relationships: []
@@ -199,7 +253,7 @@ export type Database = {
       }
     }
     Enums: {
-      app_role: "admin" | "staff" | "customer"
+      app_role: "admin" | "staff" | "customer" | "rider"
       order_status:
         | "pending"
         | "preparing"
@@ -333,7 +387,7 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
-      app_role: ["admin", "staff", "customer"],
+      app_role: ["admin", "staff", "customer", "rider"],
       order_status: [
         "pending",
         "preparing",
