@@ -16,7 +16,7 @@ const NAV = [
 
 export function Header() {
   const { count } = useCart();
-  const { user, isStaff } = useAuth();
+  const { user, isStaff, isRider } = useAuth();
   const [open, setOpen] = useState(false);
   const pathname = useRouterState({ select: (s) => s.location.pathname });
 
@@ -48,6 +48,11 @@ export function Header() {
               Dashboard
             </Link>
           )}
+          {isRider && (
+            <Link to="/rider" className="rounded-md px-3 py-2 text-sm font-medium text-accent hover:text-accent/80">
+              Deliveries
+            </Link>
+          )}
         </nav>
 
         <div className="flex items-center gap-1.5">
@@ -62,7 +67,7 @@ export function Header() {
             </Link>
           </Button>
           <Button asChild variant="ghost" size="icon" className="hidden sm:inline-flex">
-            <Link to={user ? "/orders" : "/auth"} aria-label="Account">
+            <Link to={user ? "/profile" : "/auth"} aria-label="Account">
               <User />
             </Link>
           </Button>
@@ -80,7 +85,15 @@ export function Header() {
 
       {open && (
         <nav className="border-t border-border bg-background px-4 py-2 md:hidden">
-          {[...NAV, { to: user ? "/orders" : "/auth", label: user ? "My Orders" : "Login" }].map((n) => (
+          {[
+            ...NAV,
+            ...(user
+              ? [
+                  { to: "/orders", label: "My Orders" },
+                  { to: "/profile", label: "My Profile" },
+                ]
+              : [{ to: "/auth", label: "Login" }]),
+          ].map((n) => (
             <Link
               key={n.label}
               to={n.to}
@@ -93,6 +106,11 @@ export function Header() {
           {isStaff && (
             <Link to="/admin" onClick={() => setOpen(false)} className="block rounded-md px-3 py-2.5 text-sm font-medium text-accent hover:bg-secondary">
               Dashboard
+            </Link>
+          )}
+          {isRider && (
+            <Link to="/rider" onClick={() => setOpen(false)} className="block rounded-md px-3 py-2.5 text-sm font-medium text-accent hover:bg-secondary">
+              Deliveries
             </Link>
           )}
         </nav>
