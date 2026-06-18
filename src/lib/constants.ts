@@ -48,3 +48,24 @@ export function whatsappLink(message?: string) {
   const base = `https://wa.me/${CAFE.whatsapp}`;
   return message ? `${base}?text=${encodeURIComponent(message)}` : base;
 }
+
+// Build a Google Maps navigation link. Prefer GPS coordinates when available,
+// otherwise fall back to a free-text address search.
+export function mapsNavLink(opts: {
+  lat?: number | null;
+  lng?: number | null;
+  address?: string | null;
+}) {
+  if (opts.lat != null && opts.lng != null) {
+    return `https://www.google.com/maps/dir/?api=1&destination=${opts.lat},${opts.lng}&travelmode=driving`;
+  }
+  const q = encodeURIComponent(opts.address || CAFE.mapQuery);
+  return `https://www.google.com/maps/dir/?api=1&destination=${q}&travelmode=driving`;
+}
+
+export const ROLE_LABELS: Record<string, string> = {
+  admin: "Admin",
+  staff: "Staff",
+  rider: "Rider",
+  customer: "Customer",
+};
