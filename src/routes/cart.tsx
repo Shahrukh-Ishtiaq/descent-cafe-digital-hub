@@ -163,6 +163,28 @@ function CartPage() {
             <div className="space-y-1.5">
               <Label htmlFor="caddr">Delivery address</Label>
               <Textarea id="caddr" value={address} onChange={(e) => setAddress(e.target.value)} required maxLength={300} placeholder="House #, street, area, Karachi" />
+              <Button
+                type="button"
+                variant={coords ? "secondary" : "outline"}
+                size="sm"
+                className="w-full"
+                onClick={detectLocation}
+                disabled={locating}
+              >
+                {coords ? (
+                  <>
+                    <MapPin className="size-4" /> Location captured ✓
+                  </>
+                ) : (
+                  <>
+                    <LocateFixed className="size-4" />
+                    {locating ? "Detecting…" : "Use my current location"}
+                  </>
+                )}
+              </Button>
+              <p className="text-xs text-muted-foreground">
+                Sharing your GPS location helps the rider find you faster.
+              </p>
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="cnotes">Order notes (optional)</Label>
