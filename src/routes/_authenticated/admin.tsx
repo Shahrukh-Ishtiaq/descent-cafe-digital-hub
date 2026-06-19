@@ -679,11 +679,41 @@ function ProductsTab() {
             }
           />
         </div>
-        <Input
-          placeholder="Image URL (optional)"
-          value={form.image_url}
-          onChange={(e) => setForm({ ...form, image_url: e.target.value })}
-        />
+        <div className="space-y-2 rounded-xl border border-dashed border-border p-3">
+          <p className="text-xs font-medium text-muted-foreground">
+            Product photo
+          </p>
+          {form.image_url && (
+            <img
+              src={form.image_url}
+              alt="Preview"
+              className="h-24 w-full rounded-lg object-cover"
+            />
+          )}
+          <label className="flex cursor-pointer items-center justify-center gap-2 rounded-lg bg-secondary px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-secondary/80">
+            <Upload className="size-4" />
+            {uploading ? "Uploading…" : "Upload from gallery / camera"}
+            <input
+              type="file"
+              accept="image/*"
+              className="hidden"
+              disabled={uploading}
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file)
+                  handleUpload(file, (url) =>
+                    setForm((f) => ({ ...f, image_url: url })),
+                  );
+                e.target.value = "";
+              }}
+            />
+          </label>
+          <Input
+            placeholder="…or paste an image URL"
+            value={form.image_url}
+            onChange={(e) => setForm({ ...form, image_url: e.target.value })}
+          />
+        </div>
         <Select
           value={form.category}
           onValueChange={(v) => setForm({ ...form, category: v })}
