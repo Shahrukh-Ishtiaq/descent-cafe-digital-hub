@@ -372,6 +372,93 @@ function OrdersTab() {
   );
 }
 
+/* ----------------------------- Stock alerts ----------------------------- */
+const LOW_STOCK_THRESHOLD = 5;
+
+function StockAlerts() {
+  const qc = useQueryClient();
+  const { data: products = [] } = useQuery({
+    queryKey: ["admin-products"],
+    queryFn: async (): Promise<Product[]> => {
+      const { data, error } = await sb
+        .from("products")
+        .select("*")
+        .order("category")
+        .order("sort_order");
+      if (error) throw error;
+      return data as Product[];
+    },
+  });
+
+  const outOfStock = products.filter(
+    (p) => p.stock_quantity <= 0 || !p.is_available,
+  );
+  const lowStock = products.filter(
+    (p) =>
+      p.is_available &&
+      p.stock_quantity > 0 &&
+      p.stock_quantity <= LOW_STOCK_THRESHOLD,
+  );
+
+  const restock = async (id: string) => {
+    const { error } = await sb
+      .from("products")
+      .update({ stock_quantity: 50, is_available: true })
+      .eq("id", id);
+    if (error) toast.error("Could not restock");
+    else {
+      toast.success("Restocked to 50 and back on the menu");
+      qc.invalidateQueries({ queryKey: ["admin-products"] });
+      qc.invalidateQueries({ queryKey: ["products"] });
+    }
+  };
+
+  if (outOfStock.length === 0 && lowStock.length === 0) return null;
+
+  return (
+    <div className="mt-5 space-y-3">
+      {outOfStock.length > 0 && (
+        <div className="rounded-2xl border border-destructive/30 bg-destructive/10 p-4">
+          <p className="flex items-center gap-2 font-semibold text-destructive">
+            <AlertTriangle className="size-4" />
+            {outOfStock.length} item(s) out of stock — customers can’t order these
+          </p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {outOfStock.map((p) => (
+              <button
+                key={p.id}
+                onClick={() => restock(p.id)}
+                className="rounded-full border border-destructive/40 bg-background px-3 py-1 text-xs font-medium text-foreground transition-colors hover:bg-destructive/10"
+                title="Click to restock to 50"
+              >
+                {p.name} · Restock
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+      {lowStock.length > 0 && (
+        <div className="rounded-2xl border border-gold/40 bg-gold/10 p-4">
+          <p className="flex items-center gap-2 font-semibold text-foreground">
+            <AlertTriangle className="size-4 text-gold" />
+            {lowStock.length} item(s) running low
+          </p>
+          <div className="mt-2 flex flex-wrap gap-2 text-xs text-muted-foreground">
+            {lowStock.map((p) => (
+              <span
+                key={p.id}
+                className="rounded-full border border-border bg-background px-3 py-1"
+              >
+                {p.name} · {p.stock_quantity} left
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ----------------------------- Analytics ----------------------------- */
 function AnalyticsTab() {
   const { data: orders = [] } = useQuery({
