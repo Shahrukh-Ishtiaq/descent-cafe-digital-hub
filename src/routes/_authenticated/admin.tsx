@@ -13,6 +13,8 @@ import {
   ShoppingCart,
   ShieldCheck,
   MapPin,
+  AlertTriangle,
+  Upload,
 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
@@ -43,34 +45,27 @@ import {
 } from "@/lib/constants";
 import type { Order, Product, Promotion, Profile } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { useRepeatingAlarm, primeAlarm } from "@/lib/alarm";
 
 export const Route = createFileRoute("/_authenticated/admin")({
   head: () => ({ meta: [{ title: "Admin Dashboard — Descent Cafe" }] }),
   component: AdminPage,
 });
 
-function playBell() {
-  try {
-    const ctx = new (window.AudioContext ||
-      (window as unknown as { webkitAudioContext: typeof AudioContext })
-        .webkitAudioContext)();
-    [880, 1320].forEach((freq, i) => {
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.frequency.value = freq;
-      osc.type = "sine";
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      const t = ctx.currentTime + i * 0.18;
-      gain.gain.setValueAtTime(0.0001, t);
-      gain.gain.exponentialRampToValueAtTime(0.4, t + 0.02);
-      gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.25);
-      osc.start(t);
-      osc.stop(t + 0.3);
-    });
-  } catch {
-    /* audio not available */
-  }
+// Upload an image to the product-images bucket and return a long-lived signed URL.
+async function uploadProductImage(file: File): Promise<string> {
+  const ext = (file.name.split(".").pop() || "jpg").toLowerCase();
+  const path = `${crypto.randomUUID()}.${ext}`;
+  const { error } = await supabase.storage
+    .from("product-images")
+    .upload(path, file, { upsert: false, contentType: file.type });
+  if (error) throw error;
+  const TEN_YEARS = 60 * 60 * 24 * 365 * 10;
+  const { data, error: sErr } = await supabase.storage
+    .from("product-images")
+    .createSignedUrl(path, TEN_YEARS);
+  if (sErr || !data?.signedUrl) throw sErr || new Error("Could not create URL");
+  return data.signedUrl;
 }
 
 function AdminPage() {
@@ -175,8 +170,6 @@ function AdminPage() {
 function OrdersTab() {
   const qc = useQueryClient();
   const [soundOn, setSoundOn] = useState(true);
-  const soundRef = useRef(true);
-  soundRef.current = soundOn;
 
   const { data: orders = [], isLoading } = useQuery({
     queryKey: ["admin-orders"],
@@ -214,7 +207,6 @@ function OrdersTab() {
         "postgres_changes",
         { event: "INSERT", schema: "public", table: "orders" },
         () => {
-          if (soundRef.current) playBell();
           toast.success("🔔 New order received!");
           qc.invalidateQueries({ queryKey: ["admin-orders"] });
         },
@@ -229,6 +221,10 @@ function OrdersTab() {
       supabase.removeChannel(channel);
     };
   }, [qc]);
+
+  // Keep ringing until every new order is acknowledged (moved off "pending").
+  const pendingCount = orders.filter((o) => o.status === "pending").length;
+  useRepeatingAlarm(pendingCount > 0, "admin", soundOn);
 
   const updateStatus = async (id: string, status: string) => {
     const { error } = await sb.from("orders").update({ status }).eq("id", id);
@@ -255,11 +251,21 @@ function OrdersTab() {
   return (
     <div className="mt-4">
       <div className="mb-4 flex items-center justify-between">
-        <p className="text-sm text-muted-foreground">{orders.length} order(s)</p>
+        <p className="text-sm text-muted-foreground">
+          {orders.length} order(s)
+          {pendingCount > 0 && (
+            <span className="ml-2 font-semibold text-accent">
+              · {pendingCount} new — move to “Preparing” to silence the alarm
+            </span>
+          )}
+        </p>
         <Button
           variant="outline"
           size="sm"
-          onClick={() => setSoundOn((v) => !v)}
+          onClick={() => {
+            primeAlarm();
+            setSoundOn((v) => !v);
+          }}
         >
           {soundOn ? <Bell /> : <BellOff />}{" "}
           {soundOn ? "Alerts on" : "Alerts off"}

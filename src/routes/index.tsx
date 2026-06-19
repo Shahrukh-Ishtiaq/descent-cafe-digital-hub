@@ -3,6 +3,7 @@ import { Link } from "@tanstack/react-router";
 import { ArrowRight, Clock, MapPin, Truck } from "lucide-react";
 import { SiteLayout } from "@/components/SiteLayout";
 import { Button } from "@/components/ui/button";
+import { PromoBanner } from "@/components/PromoBanner";
 import { CAFE, CATEGORIES } from "@/lib/constants";
 import { CATEGORY_IMAGES, CATEGORY_BLURBS } from "@/lib/categories";
 import hero from "@/assets/hero.jpg";
@@ -27,14 +28,14 @@ function Index() {
       <section className="relative isolate overflow-hidden">
         <img src={hero} alt="A freshly poured latte at Descent Cafe" width={1600} height={1100} className="absolute inset-0 size-full object-cover" />
         <div className="absolute inset-0 bg-gradient-to-r from-primary/90 via-primary/70 to-primary/30" />
-        <div className="relative mx-auto flex max-w-6xl flex-col items-start gap-6 px-4 py-24 md:py-36">
+        <div className="relative mx-auto flex max-w-6xl flex-col items-start gap-5 px-4 py-16 sm:py-24 md:py-36">
           <span className="rounded-full bg-background/15 px-4 py-1.5 text-sm font-medium text-primary-foreground backdrop-blur">
             Buffer Zone, Sector 16-A · Karachi
           </span>
-          <h1 className="max-w-2xl text-balance font-display text-4xl font-black leading-[1.05] text-primary-foreground md:text-6xl">
+          <h1 className="max-w-2xl text-balance font-display text-3xl font-black leading-[1.08] text-primary-foreground sm:text-4xl md:text-6xl">
             Brewed with love, delivered to your door.
           </h1>
-          <p className="max-w-xl text-lg text-primary-foreground/85">
+          <p className="max-w-xl text-base text-primary-foreground/85 sm:text-lg">
             From rich espresso and desi karak chai to flaky aloo & cheese parathas — order your favourites online and track every step to delivery.
           </p>
           <div className="flex flex-wrap gap-3">
@@ -48,8 +49,11 @@ function Index() {
         </div>
       </section>
 
+      {/* Active promotions */}
+      <PromoBanner />
+
       {/* Highlights */}
-      <section className="mx-auto -mt-10 max-w-6xl px-4">
+      <section className="relative z-10 mx-auto mt-8 max-w-6xl px-4 sm:-mt-10">
         <div className="grid gap-4 rounded-2xl border border-border bg-card p-6 shadow-card sm:grid-cols-3">
           {[
             { icon: Truck, title: "Fast Delivery", text: "Hot & fresh across North Karachi." },
