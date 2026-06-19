@@ -565,6 +565,7 @@ function ProductsTab() {
   const qc = useQueryClient();
   const [form, setForm] = useState({ ...EMPTY_PRODUCT });
   const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
 
   const { data: products = [] } = useQuery({
     queryKey: ["admin-products"],
@@ -582,6 +583,23 @@ function ProductsTab() {
   const refresh = () => {
     qc.invalidateQueries({ queryKey: ["admin-products"] });
     qc.invalidateQueries({ queryKey: ["products"] });
+  };
+
+  const handleUpload = async (file: File, onDone: (url: string) => void) => {
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error("Please choose an image under 5MB.");
+      return;
+    }
+    setUploading(true);
+    try {
+      const url = await uploadProductImage(file);
+      onDone(url);
+      toast.success("Image uploaded");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Upload failed");
+    } finally {
+      setUploading(false);
+    }
   };
 
   const addProduct = async (e: React.FormEvent) => {
