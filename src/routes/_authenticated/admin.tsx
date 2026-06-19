@@ -756,6 +756,24 @@ function ProductsTab() {
                 </p>
                 <p className="text-xs text-muted-foreground">{p.category}</p>
               </div>
+              <label className="flex cursor-pointer items-center gap-1 rounded-md border border-border px-2 py-1 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground">
+                <Upload className="size-3.5" />
+                <span className="hidden sm:inline">Photo</span>
+                <input
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  disabled={uploading}
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file)
+                      handleUpload(file, (url) =>
+                        patch(p.id, { image_url: url }),
+                      );
+                    e.target.value = "";
+                  }}
+                />
+              </label>
               <Button
                 variant="ghost"
                 size="icon"
