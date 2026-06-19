@@ -113,6 +113,7 @@ function AdminPage() {
         <p className="text-muted-foreground">
           Full control of your menu, orders, riders and business.
         </p>
+        {isAdmin && <StockAlerts />}
         <Tabs defaultValue="orders" className="mt-6">
           <TabsList className="flex h-auto flex-wrap justify-start gap-1">
             <TabsTrigger value="orders" className="gap-1.5">
