@@ -1,15 +1,23 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { MapPin, Phone, CheckCircle2, Truck, Bell } from "lucide-react";
+import {
+  MapPin,
+  Phone,
+  CheckCircle2,
+  Truck,
+  Bell,
+  BellOff,
+  LogOut,
+} from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
-import { SiteLayout } from "@/components/SiteLayout";
 import { StatusBadge } from "@/components/StatusBadge";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/lib/auth";
 import { sb } from "@/lib/db";
-import { formatPrice, mapsNavLink } from "@/lib/constants";
+import { formatPrice, mapsNavLink, CAFE } from "@/lib/constants";
+import { useRepeatingAlarm, primeAlarm } from "@/lib/alarm";
 import type { Order } from "@/lib/types";
 
 export const Route = createFileRoute("/_authenticated/rider")({
@@ -20,6 +28,8 @@ export const Route = createFileRoute("/_authenticated/rider")({
 function RiderPage() {
   const { isRider, user } = useAuth();
   const qc = useQueryClient();
+  const navigate = useNavigate();
+  const [soundOn, setSoundOn] = useState(true);
 
   const { data: orders = [], isLoading } = useQuery({
     queryKey: ["rider-orders", user?.id],
@@ -46,9 +56,6 @@ function RiderPage() {
         (payload) => {
           const row = payload.new as { assigned_rider_id?: string };
           if (row?.assigned_rider_id === user.id) {
-            if (payload.eventType === "UPDATE") {
-              // assignment may have just landed
-            }
             toast.success("🛵 New delivery assigned to you!");
             qc.invalidateQueries({ queryKey: ["rider-orders", user.id] });
           }
@@ -59,6 +66,30 @@ function RiderPage() {
       supabase.removeChannel(channel);
     };
   }, [user, qc]);
+
+  const grouped = useMemo(() => {
+    const today = new Date().toDateString();
+    const todays = orders.filter(
+      (o) =>
+        new Date(o.created_at).toDateString() === today &&
+        o.status !== "delivered" &&
+        o.status !== "cancelled",
+    );
+    const history = orders.filter((o) => !todays.includes(o));
+    const byDate: Record<string, Order[]> = {};
+    history.forEach((o) => {
+      const d = new Date(o.created_at).toLocaleDateString();
+      byDate[d] = byDate[d] || [];
+      byDate[d].push(o);
+    });
+    return { todays, byDate };
+  }, [orders]);
+
+  // Ring continuously while there are new deliveries the rider hasn't picked up.
+  const pendingPickup = grouped.todays.filter(
+    (o) => o.status !== "out_for_delivery",
+  ).length;
+  useRepeatingAlarm(pendingPickup > 0, "rider", soundOn);
 
   const markDelivered = async (id: string) => {
     const { error } = await sb
@@ -84,27 +115,16 @@ function RiderPage() {
     }
   };
 
-  const grouped = useMemo(() => {
-    const today = new Date().toDateString();
-    const todays = orders.filter(
-      (o) =>
-        new Date(o.created_at).toDateString() === today &&
-        o.status !== "delivered" &&
-        o.status !== "cancelled",
-    );
-    const history = orders.filter((o) => !todays.includes(o));
-    const byDate: Record<string, Order[]> = {};
-    history.forEach((o) => {
-      const d = new Date(o.created_at).toLocaleDateString();
-      byDate[d] = byDate[d] || [];
-      byDate[d].push(o);
-    });
-    return { todays, byDate };
-  }, [orders]);
+  const signOut = async () => {
+    await qc.cancelQueries();
+    qc.clear();
+    await supabase.auth.signOut();
+    navigate({ to: "/auth", replace: true });
+  };
 
   if (!isRider) {
     return (
-      <SiteLayout>
+      <RiderShell onSignOut={signOut}>
         <div className="mx-auto max-w-md px-4 py-24 text-center">
           <Truck className="mx-auto size-12 text-muted-foreground" />
           <h1 className="mt-4 font-display text-2xl font-bold text-foreground">
@@ -114,26 +134,36 @@ function RiderPage() {
             This dashboard is for delivery riders. If you should have access, ask
             the cafe admin to assign you the rider role.
           </p>
-          <Button asChild className="mt-6">
-            <Link to="/">Back home</Link>
-          </Button>
         </div>
-      </SiteLayout>
+      </RiderShell>
     );
   }
 
   return (
-    <SiteLayout>
-      <div className="mx-auto max-w-3xl px-4 py-10">
+    <RiderShell
+      onSignOut={signOut}
+      soundOn={soundOn}
+      onToggleSound={() => {
+        primeAlarm();
+        setSoundOn((v) => !v);
+      }}
+    >
+      <div className="mx-auto max-w-3xl px-4 py-8">
         <div className="flex items-center gap-2">
           <Truck className="size-7 text-accent" />
-          <h1 className="font-display text-3xl font-bold text-foreground">
+          <h1 className="font-display text-2xl font-bold text-foreground sm:text-3xl">
             My Deliveries
           </h1>
         </div>
-        <p className="text-muted-foreground">
-          <Bell className="mr-1 inline size-3.5" /> You’ll be notified when a new
-          order is assigned to you.
+        <p className="mt-1 text-sm text-muted-foreground">
+          {pendingPickup > 0 ? (
+            <span className="font-semibold text-accent">
+              {pendingPickup} new delivery waiting — alarm rings until you tap
+              “Picked up”.
+            </span>
+          ) : (
+            "You’ll be alerted the moment a new order is assigned to you."
+          )}
         </p>
 
         <h2 className="mt-8 font-display text-xl font-bold text-foreground">
@@ -178,7 +208,56 @@ function RiderPage() {
           </>
         )}
       </div>
-    </SiteLayout>
+    </RiderShell>
+  );
+}
+
+// Minimal, delivery-only shell — no site nav, menu or marketing for riders.
+function RiderShell({
+  children,
+  onSignOut,
+  soundOn,
+  onToggleSound,
+}: {
+  children: React.ReactNode;
+  onSignOut: () => void;
+  soundOn?: boolean;
+  onToggleSound?: () => void;
+}) {
+  return (
+    <div className="flex min-h-screen flex-col bg-background">
+      <header className="sticky top-0 z-40 border-b border-border/70 bg-background/90 backdrop-blur">
+        <div className="mx-auto flex h-16 max-w-3xl items-center justify-between gap-3 px-4">
+          <div className="flex min-w-0 items-center gap-2">
+            <span className="grid size-9 shrink-0 place-items-center rounded-xl bg-accent/15 text-accent">
+              <Truck className="size-5" />
+            </span>
+            <span className="truncate font-display text-lg font-bold text-foreground">
+              {CAFE.name} <span className="text-accent">Rider</span>
+            </span>
+          </div>
+          <div className="flex shrink-0 items-center gap-1.5">
+            {onToggleSound && (
+              <Button variant="outline" size="sm" onClick={onToggleSound}>
+                {soundOn ? (
+                  <Bell className="size-4" />
+                ) : (
+                  <BellOff className="size-4" />
+                )}
+                <span className="hidden sm:inline">
+                  {soundOn ? "Alerts on" : "Alerts off"}
+                </span>
+              </Button>
+            )}
+            <Button variant="ghost" size="sm" onClick={onSignOut}>
+              <LogOut className="size-4" />
+              <span className="hidden sm:inline">Sign out</span>
+            </Button>
+          </div>
+        </div>
+      </header>
+      <main className="flex-1">{children}</main>
+    </div>
   );
 }
 
@@ -246,7 +325,12 @@ function RiderCard({
           </a>
         </Button>
         {!history && o.status !== "out_for_delivery" && (
-          <Button variant="secondary" size="sm" className="flex-1" onClick={onOut}>
+          <Button
+            variant="secondary"
+            size="sm"
+            className="flex-1"
+            onClick={onOut}
+          >
             <Truck className="size-4" /> Picked up
           </Button>
         )}

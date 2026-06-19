@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Bell,
@@ -13,6 +13,8 @@ import {
   ShoppingCart,
   ShieldCheck,
   MapPin,
+  AlertTriangle,
+  Upload,
 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
@@ -43,34 +45,27 @@ import {
 } from "@/lib/constants";
 import type { Order, Product, Promotion, Profile } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { useRepeatingAlarm, primeAlarm } from "@/lib/alarm";
 
 export const Route = createFileRoute("/_authenticated/admin")({
   head: () => ({ meta: [{ title: "Admin Dashboard — Descent Cafe" }] }),
   component: AdminPage,
 });
 
-function playBell() {
-  try {
-    const ctx = new (window.AudioContext ||
-      (window as unknown as { webkitAudioContext: typeof AudioContext })
-        .webkitAudioContext)();
-    [880, 1320].forEach((freq, i) => {
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.frequency.value = freq;
-      osc.type = "sine";
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      const t = ctx.currentTime + i * 0.18;
-      gain.gain.setValueAtTime(0.0001, t);
-      gain.gain.exponentialRampToValueAtTime(0.4, t + 0.02);
-      gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.25);
-      osc.start(t);
-      osc.stop(t + 0.3);
-    });
-  } catch {
-    /* audio not available */
-  }
+// Upload an image to the product-images bucket and return a long-lived signed URL.
+async function uploadProductImage(file: File): Promise<string> {
+  const ext = (file.name.split(".").pop() || "jpg").toLowerCase();
+  const path = `${crypto.randomUUID()}.${ext}`;
+  const { error } = await supabase.storage
+    .from("product-images")
+    .upload(path, file, { upsert: false, contentType: file.type });
+  if (error) throw error;
+  const TEN_YEARS = 60 * 60 * 24 * 365 * 10;
+  const { data, error: sErr } = await supabase.storage
+    .from("product-images")
+    .createSignedUrl(path, TEN_YEARS);
+  if (sErr || !data?.signedUrl) throw sErr || new Error("Could not create URL");
+  return data.signedUrl;
 }
 
 function AdminPage() {
@@ -118,6 +113,7 @@ function AdminPage() {
         <p className="text-muted-foreground">
           Full control of your menu, orders, riders and business.
         </p>
+        {isAdmin && <StockAlerts />}
         <Tabs defaultValue="orders" className="mt-6">
           <TabsList className="flex h-auto flex-wrap justify-start gap-1">
             <TabsTrigger value="orders" className="gap-1.5">
@@ -175,8 +171,6 @@ function AdminPage() {
 function OrdersTab() {
   const qc = useQueryClient();
   const [soundOn, setSoundOn] = useState(true);
-  const soundRef = useRef(true);
-  soundRef.current = soundOn;
 
   const { data: orders = [], isLoading } = useQuery({
     queryKey: ["admin-orders"],
@@ -214,7 +208,6 @@ function OrdersTab() {
         "postgres_changes",
         { event: "INSERT", schema: "public", table: "orders" },
         () => {
-          if (soundRef.current) playBell();
           toast.success("🔔 New order received!");
           qc.invalidateQueries({ queryKey: ["admin-orders"] });
         },
@@ -229,6 +222,10 @@ function OrdersTab() {
       supabase.removeChannel(channel);
     };
   }, [qc]);
+
+  // Keep ringing until every new order is acknowledged (moved off "pending").
+  const pendingCount = orders.filter((o) => o.status === "pending").length;
+  useRepeatingAlarm(pendingCount > 0, "admin", soundOn);
 
   const updateStatus = async (id: string, status: string) => {
     const { error } = await sb.from("orders").update({ status }).eq("id", id);
@@ -255,11 +252,21 @@ function OrdersTab() {
   return (
     <div className="mt-4">
       <div className="mb-4 flex items-center justify-between">
-        <p className="text-sm text-muted-foreground">{orders.length} order(s)</p>
+        <p className="text-sm text-muted-foreground">
+          {orders.length} order(s)
+          {pendingCount > 0 && (
+            <span className="ml-2 font-semibold text-accent">
+              · {pendingCount} new — move to “Preparing” to silence the alarm
+            </span>
+          )}
+        </p>
         <Button
           variant="outline"
           size="sm"
-          onClick={() => setSoundOn((v) => !v)}
+          onClick={() => {
+            primeAlarm();
+            setSoundOn((v) => !v);
+          }}
         >
           {soundOn ? <Bell /> : <BellOff />}{" "}
           {soundOn ? "Alerts on" : "Alerts off"}
@@ -359,6 +366,93 @@ function OrdersTab() {
               </ul>
             </div>
           ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ----------------------------- Stock alerts ----------------------------- */
+const LOW_STOCK_THRESHOLD = 5;
+
+function StockAlerts() {
+  const qc = useQueryClient();
+  const { data: products = [] } = useQuery({
+    queryKey: ["admin-products"],
+    queryFn: async (): Promise<Product[]> => {
+      const { data, error } = await sb
+        .from("products")
+        .select("*")
+        .order("category")
+        .order("sort_order");
+      if (error) throw error;
+      return data as Product[];
+    },
+  });
+
+  const outOfStock = products.filter(
+    (p) => p.stock_quantity <= 0 || !p.is_available,
+  );
+  const lowStock = products.filter(
+    (p) =>
+      p.is_available &&
+      p.stock_quantity > 0 &&
+      p.stock_quantity <= LOW_STOCK_THRESHOLD,
+  );
+
+  const restock = async (id: string) => {
+    const { error } = await sb
+      .from("products")
+      .update({ stock_quantity: 50, is_available: true })
+      .eq("id", id);
+    if (error) toast.error("Could not restock");
+    else {
+      toast.success("Restocked to 50 and back on the menu");
+      qc.invalidateQueries({ queryKey: ["admin-products"] });
+      qc.invalidateQueries({ queryKey: ["products"] });
+    }
+  };
+
+  if (outOfStock.length === 0 && lowStock.length === 0) return null;
+
+  return (
+    <div className="mt-5 space-y-3">
+      {outOfStock.length > 0 && (
+        <div className="rounded-2xl border border-destructive/30 bg-destructive/10 p-4">
+          <p className="flex items-center gap-2 font-semibold text-destructive">
+            <AlertTriangle className="size-4" />
+            {outOfStock.length} item(s) out of stock — customers can’t order these
+          </p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {outOfStock.map((p) => (
+              <button
+                key={p.id}
+                onClick={() => restock(p.id)}
+                className="rounded-full border border-destructive/40 bg-background px-3 py-1 text-xs font-medium text-foreground transition-colors hover:bg-destructive/10"
+                title="Click to restock to 50"
+              >
+                {p.name} · Restock
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+      {lowStock.length > 0 && (
+        <div className="rounded-2xl border border-gold/40 bg-gold/10 p-4">
+          <p className="flex items-center gap-2 font-semibold text-foreground">
+            <AlertTriangle className="size-4 text-gold" />
+            {lowStock.length} item(s) running low
+          </p>
+          <div className="mt-2 flex flex-wrap gap-2 text-xs text-muted-foreground">
+            {lowStock.map((p) => (
+              <span
+                key={p.id}
+                className="rounded-full border border-border bg-background px-3 py-1"
+              >
+                {p.name} · {p.stock_quantity} left
+              </span>
+            ))}
+          </div>
         </div>
       )}
     </div>
@@ -471,6 +565,7 @@ function ProductsTab() {
   const qc = useQueryClient();
   const [form, setForm] = useState({ ...EMPTY_PRODUCT });
   const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
 
   const { data: products = [] } = useQuery({
     queryKey: ["admin-products"],
@@ -488,6 +583,23 @@ function ProductsTab() {
   const refresh = () => {
     qc.invalidateQueries({ queryKey: ["admin-products"] });
     qc.invalidateQueries({ queryKey: ["products"] });
+  };
+
+  const handleUpload = async (file: File, onDone: (url: string) => void) => {
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error("Please choose an image under 5MB.");
+      return;
+    }
+    setUploading(true);
+    try {
+      const url = await uploadProductImage(file);
+      onDone(url);
+      toast.success("Image uploaded");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Upload failed");
+    } finally {
+      setUploading(false);
+    }
   };
 
   const addProduct = async (e: React.FormEvent) => {
@@ -567,11 +679,41 @@ function ProductsTab() {
             }
           />
         </div>
-        <Input
-          placeholder="Image URL (optional)"
-          value={form.image_url}
-          onChange={(e) => setForm({ ...form, image_url: e.target.value })}
-        />
+        <div className="space-y-2 rounded-xl border border-dashed border-border p-3">
+          <p className="text-xs font-medium text-muted-foreground">
+            Product photo
+          </p>
+          {form.image_url && (
+            <img
+              src={form.image_url}
+              alt="Preview"
+              className="h-24 w-full rounded-lg object-cover"
+            />
+          )}
+          <label className="flex cursor-pointer items-center justify-center gap-2 rounded-lg bg-secondary px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-secondary/80">
+            <Upload className="size-4" />
+            {uploading ? "Uploading…" : "Upload from gallery / camera"}
+            <input
+              type="file"
+              accept="image/*"
+              className="hidden"
+              disabled={uploading}
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file)
+                  handleUpload(file, (url) =>
+                    setForm((f) => ({ ...f, image_url: url })),
+                  );
+                e.target.value = "";
+              }}
+            />
+          </label>
+          <Input
+            placeholder="…or paste an image URL"
+            value={form.image_url}
+            onChange={(e) => setForm({ ...form, image_url: e.target.value })}
+          />
+        </div>
         <Select
           value={form.category}
           onValueChange={(v) => setForm({ ...form, category: v })}
@@ -614,6 +756,24 @@ function ProductsTab() {
                 </p>
                 <p className="text-xs text-muted-foreground">{p.category}</p>
               </div>
+              <label className="flex cursor-pointer items-center gap-1 rounded-md border border-border px-2 py-1 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground">
+                <Upload className="size-3.5" />
+                <span className="hidden sm:inline">Photo</span>
+                <input
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  disabled={uploading}
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file)
+                      handleUpload(file, (url) =>
+                        patch(p.id, { image_url: url }),
+                      );
+                    e.target.value = "";
+                  }}
+                />
+              </label>
               <Button
                 variant="ghost"
                 size="icon"

@@ -71,6 +71,29 @@ function CartPage() {
     if (items.length === 0) return;
     setPlacing(true);
     try {
+      // Re-check live stock so customers can't order sold-out items.
+      const ids = items.map((i) => i.id);
+      const { data: live, error: stockErr } = await sb
+        .from("products")
+        .select("id, name, is_available, stock_quantity")
+        .in("id", ids);
+      if (stockErr) throw stockErr;
+      const blocked = items.filter((i) => {
+        const p = (live ?? []).find(
+          (row: { id: string }) => row.id === i.id,
+        );
+        return !p || !p.is_available || p.stock_quantity < i.quantity;
+      });
+      if (blocked.length > 0) {
+        toast.error(
+          `Sorry, these are no longer available: ${blocked
+            .map((b) => b.name)
+            .join(", ")}. Please update your cart.`,
+        );
+        setPlacing(false);
+        return;
+      }
+
       const grand = total + DELIVERY_FEE;
       const { data: order, error } = await sb
         .from("orders")

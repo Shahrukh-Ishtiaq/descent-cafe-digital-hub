@@ -23,11 +23,15 @@ function AuthPage() {
   const [phone, setPhone] = useState("");
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, roles, isRider, isStaff } = useAuth();
 
   useEffect(() => {
-    if (user) navigate({ to: "/menu" });
-  }, [user, navigate]);
+    if (!user) return;
+    // Send each role to the right home: riders to deliveries, staff to admin.
+    if (isRider && !isStaff) navigate({ to: "/rider", replace: true });
+    else if (isStaff) navigate({ to: "/admin", replace: true });
+    else navigate({ to: "/menu", replace: true });
+  }, [user, roles, isRider, isStaff, navigate]);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
