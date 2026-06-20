@@ -8,9 +8,9 @@ export const Route = createFileRoute("/contact")({
   head: () => ({
     meta: [
       { title: "Contact & Location — Descent Cafe Karachi" },
-      { name: "description", content: "Find Descent Cafe at Buffer Zone, Sector 16-A, North Karachi. Call us, message on WhatsApp or get directions on Google Maps." },
+      { name: "description", content: "Find Descent Cafe at Buffer Zone, Sector 15-A, Karachi. Call us, message on WhatsApp or get directions on Google Maps." },
       { property: "og:title", content: "Contact Descent Cafe" },
-      { property: "og:description", content: "Visit, call or WhatsApp Descent Cafe in Buffer Zone, Sector 16-A, Karachi." },
+      { property: "og:description", content: "Visit, call or WhatsApp Descent Cafe in Buffer Zone, Sector 15-A, Karachi." },
     ],
   }),
   component: ContactPage,

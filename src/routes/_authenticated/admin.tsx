@@ -15,6 +15,11 @@ import {
   MapPin,
   AlertTriangle,
   Upload,
+  Layers,
+  Truck,
+  Download,
+  Pencil,
+  Save,
 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
@@ -44,6 +49,7 @@ import {
   mapsNavLink,
 } from "@/lib/constants";
 import type { Order, Product, Promotion, Profile } from "@/lib/types";
+import { useCategories, type Category } from "@/lib/categories";
 import { cn } from "@/lib/utils";
 import { useRepeatingAlarm, primeAlarm } from "@/lib/alarm";
 
@@ -127,8 +133,14 @@ function AdminPage() {
                 <TabsTrigger value="products" className="gap-1.5">
                   <Package className="size-4" /> Products
                 </TabsTrigger>
+                <TabsTrigger value="categories" className="gap-1.5">
+                  <Layers className="size-4" /> Categories
+                </TabsTrigger>
                 <TabsTrigger value="promotions" className="gap-1.5">
                   <Tag className="size-4" /> Promotions
+                </TabsTrigger>
+                <TabsTrigger value="delivery" className="gap-1.5">
+                  <Truck className="size-4" /> Delivery
                 </TabsTrigger>
                 <TabsTrigger value="customers" className="gap-1.5">
                   <Users className="size-4" /> Customers
@@ -150,8 +162,14 @@ function AdminPage() {
               <TabsContent value="products">
                 <ProductsTab />
               </TabsContent>
+              <TabsContent value="categories">
+                <CategoriesTab />
+              </TabsContent>
               <TabsContent value="promotions">
                 <PromotionsTab />
+              </TabsContent>
+              <TabsContent value="delivery">
+                <DeliveryTab />
               </TabsContent>
               <TabsContent value="customers">
                 <CustomersTab />
@@ -461,6 +479,13 @@ function StockAlerts() {
 
 /* ----------------------------- Analytics ----------------------------- */
 function AnalyticsTab() {
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const monthAgoStr = new Date(Date.now() - 29 * 86400000)
+    .toISOString()
+    .slice(0, 10);
+  const [from, setFrom] = useState(monthAgoStr);
+  const [to, setTo] = useState(todayStr);
+
   const { data: orders = [] } = useQuery({
     queryKey: ["admin-orders"],
     queryFn: async (): Promise<Order[]> => {
@@ -473,18 +498,52 @@ function AnalyticsTab() {
     },
   });
 
-  const stats = useMemo(() => {
-    const delivered = orders.filter((o) => o.status === "delivered");
+  const isDelivered = (o: Order) => o.status === "delivered";
+
+  // All-time totals (not affected by the date filter).
+  const allTime = useMemo(() => {
+    const delivered = orders.filter(isDelivered);
+    return {
+      revenue: delivered.reduce((s, o) => s + Number(o.total), 0),
+      orders: orders.length,
+      delivered: delivered.length,
+    };
+  }, [orders]);
+
+  // Everything below respects the selected date range.
+  const range = useMemo(() => {
+    const start = new Date(from + "T00:00:00").getTime();
+    const end = new Date(to + "T23:59:59").getTime();
+    const inRange = orders.filter((o) => {
+      const t = new Date(o.created_at).getTime();
+      return t >= start && t <= end;
+    });
+    const delivered = inRange.filter(isDelivered);
     const revenue = delivered.reduce((s, o) => s + Number(o.total), 0);
-    const pending = orders.filter((o) =>
+    const active = inRange.filter((o) =>
       ["pending", "preparing", "out_for_delivery"].includes(o.status),
     ).length;
-    const today = new Date().toDateString();
-    const todayCount = orders.filter(
-      (o) => new Date(o.created_at).toDateString() === today,
-    ).length;
+
+    // Build a continuous daily series across the range.
+    const days: { date: string; revenue: number; orders: number }[] = [];
+    const map: Record<string, { revenue: number; orders: number }> = {};
+    inRange.forEach((o) => {
+      const d = new Date(o.created_at).toISOString().slice(0, 10);
+      map[d] = map[d] || { revenue: 0, orders: 0 };
+      map[d].orders += 1;
+      if (isDelivered(o)) map[d].revenue += Number(o.total);
+    });
+    for (
+      let t = new Date(from + "T00:00:00").getTime();
+      t <= new Date(to + "T00:00:00").getTime();
+      t += 86400000
+    ) {
+      const d = new Date(t).toISOString().slice(0, 10);
+      days.push({ date: d, ...(map[d] || { revenue: 0, orders: 0 }) });
+    }
+
     const itemCounts: Record<string, number> = {};
-    orders.forEach((o) =>
+    inRange.forEach((o) =>
       o.order_items?.forEach((it) => {
         itemCounts[it.name] = (itemCounts[it.name] || 0) + it.quantity;
       }),
@@ -492,28 +551,98 @@ function AnalyticsTab() {
     const topItems = Object.entries(itemCounts)
       .sort((a, b) => b[1] - a[1])
       .slice(0, 5);
+
     return {
       revenue,
+      orders: inRange.length,
       delivered: delivered.length,
-      pending,
-      todayCount,
-      total: orders.length,
+      active,
       avg: delivered.length ? revenue / delivered.length : 0,
+      days,
       topItems,
     };
-  }, [orders]);
+  }, [orders, from, to]);
+
+  const maxRevenue = Math.max(1, ...range.days.map((d) => d.revenue));
+
+  const exportCsv = () => {
+    const header = "Date,Orders,Revenue (delivered)";
+    const rows = range.days.map(
+      (d) => `${d.date},${d.orders},${d.revenue}`,
+    );
+    const csv = [header, ...rows].join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `descent-cafe-report_${from}_to_${to}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast.success("Report downloaded");
+  };
 
   const cards = [
-    { label: "Revenue (delivered)", value: formatPrice(stats.revenue) },
-    { label: "Total orders", value: String(stats.total) },
-    { label: "Orders today", value: String(stats.todayCount) },
-    { label: "Active orders", value: String(stats.pending) },
-    { label: "Delivered", value: String(stats.delivered) },
-    { label: "Avg. order value", value: formatPrice(Math.round(stats.avg)) },
+    { label: "Revenue (all-time)", value: formatPrice(allTime.revenue) },
+    { label: "Revenue (in range)", value: formatPrice(range.revenue) },
+    { label: "Orders (in range)", value: String(range.orders) },
+    { label: "Delivered (in range)", value: String(range.delivered) },
+    { label: "Active orders", value: String(range.active) },
+    { label: "Avg. order value", value: formatPrice(Math.round(range.avg)) },
   ];
 
   return (
     <div className="mt-4 space-y-6">
+      {/* Date filter + export */}
+      <div className="flex flex-wrap items-end gap-3 rounded-2xl border border-border bg-card p-4 shadow-card">
+        <div className="space-y-1">
+          <label className="text-xs font-medium text-muted-foreground">From</label>
+          <Input
+            type="date"
+            value={from}
+            max={to}
+            onChange={(e) => setFrom(e.target.value)}
+            className="h-9 w-40"
+          />
+        </div>
+        <div className="space-y-1">
+          <label className="text-xs font-medium text-muted-foreground">To</label>
+          <Input
+            type="date"
+            value={to}
+            min={from}
+            max={todayStr}
+            onChange={(e) => setTo(e.target.value)}
+            className="h-9 w-40"
+          />
+        </div>
+        <div className="flex gap-1.5">
+          {[
+            { label: "7d", days: 7 },
+            { label: "30d", days: 30 },
+            { label: "90d", days: 90 },
+          ].map((p) => (
+            <Button
+              key={p.label}
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setFrom(
+                  new Date(Date.now() - (p.days - 1) * 86400000)
+                    .toISOString()
+                    .slice(0, 10),
+                );
+                setTo(todayStr);
+              }}
+            >
+              {p.label}
+            </Button>
+          ))}
+        </div>
+        <Button size="sm" className="ml-auto" onClick={exportCsv}>
+          <Download className="size-4" /> Export CSV
+        </Button>
+      </div>
+
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {cards.map((c) => (
           <div
@@ -527,15 +656,50 @@ function AnalyticsTab() {
           </div>
         ))}
       </div>
+
+      {/* Daily revenue trend */}
       <div className="rounded-2xl border border-border bg-card p-5 shadow-card">
         <h3 className="font-display text-lg font-bold text-foreground">
-          Best sellers
+          Daily revenue & orders
         </h3>
-        {stats.topItems.length === 0 ? (
+        {range.days.every((d) => d.orders === 0) ? (
+          <p className="mt-2 text-sm text-muted-foreground">
+            No orders in this range.
+          </p>
+        ) : (
+          <div className="mt-4 flex h-48 items-end gap-1 overflow-x-auto">
+            {range.days.map((d) => (
+              <div
+                key={d.date}
+                className="group flex min-w-[10px] flex-1 flex-col items-center justify-end"
+                title={`${d.date}\n${formatPrice(d.revenue)} · ${d.orders} order(s)`}
+              >
+                <div
+                  className="w-full rounded-t bg-accent/80 transition-colors group-hover:bg-accent"
+                  style={{
+                    height: `${Math.max(2, (d.revenue / maxRevenue) * 100)}%`,
+                  }}
+                />
+              </div>
+            ))}
+          </div>
+        )}
+        <div className="mt-2 flex justify-between text-xs text-muted-foreground">
+          <span>{from}</span>
+          <span>{to}</span>
+        </div>
+      </div>
+
+      {/* Best sellers */}
+      <div className="rounded-2xl border border-border bg-card p-5 shadow-card">
+        <h3 className="font-display text-lg font-bold text-foreground">
+          Best sellers (in range)
+        </h3>
+        {range.topItems.length === 0 ? (
           <p className="mt-2 text-sm text-muted-foreground">No sales yet.</p>
         ) : (
           <ul className="mt-3 space-y-2">
-            {stats.topItems.map(([name, qty]) => (
+            {range.topItems.map(([name, qty]) => (
               <li
                 key={name}
                 className="flex items-center justify-between text-sm"
@@ -566,6 +730,9 @@ function ProductsTab() {
   const [form, setForm] = useState({ ...EMPTY_PRODUCT });
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const { data: categoryRows = [] } = useCategories();
+  const categoryNames =
+    categoryRows.length > 0 ? categoryRows.map((c) => c.name) : [...CATEGORIES];
 
   const { data: products = [] } = useQuery({
     queryKey: ["admin-products"],
@@ -722,7 +889,7 @@ function ProductsTab() {
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            {CATEGORIES.map((c) => (
+            {categoryNames.map((c) => (
               <SelectItem key={c} value={c}>
                 {c}
               </SelectItem>
@@ -1271,6 +1438,326 @@ function TeamTab() {
           ))}
         </ul>
       </div>
+    </div>
+  );
+}
+
+/* ----------------------------- Categories ----------------------------- */
+function CategoriesTab() {
+  const qc = useQueryClient();
+  const { data: categories = [] } = useCategories();
+  const [form, setForm] = useState({ name: "", blurb: "", image_url: "" });
+  const [uploading, setUploading] = useState(false);
+  const [editing, setEditing] = useState<Record<string, Partial<Category>>>({});
+
+  const refresh = () => {
+    qc.invalidateQueries({ queryKey: ["categories"] });
+  };
+
+  const handleUpload = async (file: File, onDone: (url: string) => void) => {
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error("Please choose an image under 5MB.");
+      return;
+    }
+    setUploading(true);
+    try {
+      const url = await uploadProductImage(file);
+      onDone(url);
+      toast.success("Image uploaded");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Upload failed");
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const add = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const name = form.name.trim();
+    if (!name) return;
+    const sort_order =
+      (categories.reduce((m, c) => Math.max(m, c.sort_order), 0) || 0) + 1;
+    const { error } = await sb.from("categories").insert({
+      name,
+      blurb: form.blurb.trim() || null,
+      image_url: form.image_url.trim() || null,
+      sort_order,
+    });
+    if (error)
+      toast.error(
+        error.message?.includes("duplicate")
+          ? "A category with that name already exists."
+          : "Could not add category",
+      );
+    else {
+      toast.success("Category added");
+      setForm({ name: "", blurb: "", image_url: "" });
+      refresh();
+    }
+  };
+
+  const saveEdit = async (id: string) => {
+    const fields = editing[id];
+    if (!fields) return;
+    const { error } = await sb.from("categories").update(fields).eq("id", id);
+    if (error) toast.error("Update failed");
+    else {
+      toast.success("Category updated");
+      setEditing((e) => {
+        const next = { ...e };
+        delete next[id];
+        return next;
+      });
+      refresh();
+    }
+  };
+
+  const del = async (id: string) => {
+    const { error } = await sb.from("categories").delete().eq("id", id);
+    if (error) toast.error("Delete failed");
+    else {
+      toast.success("Category deleted");
+      refresh();
+    }
+  };
+
+  return (
+    <div className="mt-4 grid gap-8 lg:grid-cols-[1fr_1.5fr]">
+      <form
+        onSubmit={add}
+        className="h-fit space-y-3 rounded-2xl border border-border bg-card p-5 shadow-card"
+      >
+        <h3 className="font-display text-lg font-bold text-foreground">
+          Add category
+        </h3>
+        <Input
+          placeholder="Name (e.g. Wraps)"
+          value={form.name}
+          onChange={(e) => setForm({ ...form, name: e.target.value })}
+          required
+          maxLength={40}
+        />
+        <Textarea
+          placeholder="Short blurb (optional)"
+          value={form.blurb}
+          onChange={(e) => setForm({ ...form, blurb: e.target.value })}
+          maxLength={140}
+        />
+        <div className="space-y-2 rounded-xl border border-dashed border-border p-3">
+          <p className="text-xs font-medium text-muted-foreground">
+            Category photo (optional)
+          </p>
+          {form.image_url && (
+            <img
+              src={form.image_url}
+              alt="Preview"
+              className="h-24 w-full rounded-lg object-cover"
+            />
+          )}
+          <label className="flex cursor-pointer items-center justify-center gap-2 rounded-lg bg-secondary px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-secondary/80">
+            <Upload className="size-4" />
+            {uploading ? "Uploading…" : "Upload image"}
+            <input
+              type="file"
+              accept="image/*"
+              className="hidden"
+              disabled={uploading}
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file)
+                  handleUpload(file, (url) =>
+                    setForm((f) => ({ ...f, image_url: url })),
+                  );
+                e.target.value = "";
+              }}
+            />
+          </label>
+        </div>
+        <Button type="submit" className="w-full">
+          <Plus /> Add category
+        </Button>
+      </form>
+
+      <div className="space-y-2">
+        {categories.length === 0 && (
+          <p className="py-8 text-center text-sm text-muted-foreground">
+            No categories yet.
+          </p>
+        )}
+        {categories.map((c) => {
+          const draft = editing[c.id];
+          const isEditing = !!draft;
+          return (
+            <div
+              key={c.id}
+              className="rounded-xl border border-border bg-card p-3 shadow-card"
+            >
+              <div className="flex items-center gap-3">
+                {c.image_url && (
+                  <img
+                    src={c.image_url}
+                    alt={c.name}
+                    className="size-12 shrink-0 rounded-lg object-cover"
+                    width={48}
+                    height={48}
+                  />
+                )}
+                <div className="min-w-0 flex-1">
+                  {isEditing ? (
+                    <Input
+                      value={draft.name ?? c.name}
+                      onChange={(e) =>
+                        setEditing((s) => ({
+                          ...s,
+                          [c.id]: { ...s[c.id], name: e.target.value },
+                        }))
+                      }
+                      className="h-8"
+                      maxLength={40}
+                    />
+                  ) : (
+                    <p className="truncate font-semibold text-foreground">
+                      {c.name}
+                    </p>
+                  )}
+                  {!isEditing && c.blurb && (
+                    <p className="truncate text-xs text-muted-foreground">
+                      {c.blurb}
+                    </p>
+                  )}
+                </div>
+                {isEditing ? (
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="text-accent"
+                    onClick={() => saveEdit(c.id)}
+                  >
+                    <Save className="size-4" />
+                  </Button>
+                ) : (
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    onClick={() =>
+                      setEditing((s) => ({
+                        ...s,
+                        [c.id]: { name: c.name, blurb: c.blurb },
+                      }))
+                    }
+                  >
+                    <Pencil className="size-4" />
+                  </Button>
+                )}
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="text-destructive"
+                  onClick={() => del(c.id)}
+                >
+                  <Trash2 className="size-4" />
+                </Button>
+              </div>
+              {isEditing && (
+                <Textarea
+                  placeholder="Short blurb"
+                  value={draft.blurb ?? c.blurb ?? ""}
+                  onChange={(e) =>
+                    setEditing((s) => ({
+                      ...s,
+                      [c.id]: { ...s[c.id], blurb: e.target.value },
+                    }))
+                  }
+                  className="mt-2"
+                  maxLength={140}
+                />
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/* ----------------------------- Delivery charge ----------------------------- */
+function DeliveryTab() {
+  const qc = useQueryClient();
+  const [fee, setFee] = useState<string>("");
+  const [saving, setSaving] = useState(false);
+
+  const { data: current } = useQuery({
+    queryKey: ["settings", "delivery_fee"],
+    queryFn: async (): Promise<number> => {
+      const { data, error } = await sb
+        .from("app_settings")
+        .select("value")
+        .eq("key", "delivery_fee")
+        .maybeSingle();
+      if (error) throw error;
+      const amount = data?.value?.amount;
+      return typeof amount === "number" ? amount : 100;
+    },
+  });
+
+  useEffect(() => {
+    if (current != null) setFee(String(current));
+  }, [current]);
+
+  const save = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const amount = Number(fee);
+    if (!Number.isFinite(amount) || amount < 0) {
+      toast.error("Enter a valid amount.");
+      return;
+    }
+    setSaving(true);
+    const { error } = await sb
+      .from("app_settings")
+      .upsert(
+        { key: "delivery_fee", value: { amount } },
+        { onConflict: "key" },
+      );
+    setSaving(false);
+    if (error) toast.error("Could not save delivery charge");
+    else {
+      toast.success("Delivery charge updated for all orders");
+      qc.invalidateQueries({ queryKey: ["settings", "delivery_fee"] });
+    }
+  };
+
+  return (
+    <div className="mt-4 max-w-md">
+      <form
+        onSubmit={save}
+        className="space-y-4 rounded-2xl border border-border bg-card p-6 shadow-card"
+      >
+        <h3 className="flex items-center gap-2 font-display text-lg font-bold text-foreground">
+          <Truck className="size-5" /> Global delivery charge
+        </h3>
+        <p className="text-sm text-muted-foreground">
+          This fee is automatically added to every order at checkout. Current:{" "}
+          <span className="font-semibold text-foreground">
+            {current != null ? formatPrice(current) : "…"}
+          </span>
+        </p>
+        <div className="space-y-1.5">
+          <label className="text-sm font-medium text-foreground">
+            Delivery charge (Rs.)
+          </label>
+          <Input
+            type="number"
+            min="0"
+            step="1"
+            value={fee}
+            onChange={(e) => setFee(e.target.value)}
+            required
+          />
+        </div>
+        <Button type="submit" className="w-full" disabled={saving}>
+          {saving ? "Saving…" : "Save delivery charge"}
+        </Button>
+      </form>
     </div>
   );
 }

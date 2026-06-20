@@ -5,6 +5,7 @@ import { SiteLayout } from "@/components/SiteLayout";
 import { ProductCard } from "@/components/ProductCard";
 import { sb } from "@/lib/db";
 import { CATEGORIES } from "@/lib/constants";
+import { useCategories } from "@/lib/categories";
 import type { Product } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -22,6 +23,7 @@ export const Route = createFileRoute("/menu")({
 
 function MenuPage() {
   const [active, setActive] = useState<string>("All");
+  const { data: categories = [] } = useCategories();
   const { data: products = [], isLoading } = useQuery({
     queryKey: ["products"],
     queryFn: async (): Promise<Product[]> => {
@@ -40,7 +42,9 @@ function MenuPage() {
     [products, active],
   );
 
-  const tabs = ["All", ...CATEGORIES];
+  const names =
+    categories.length > 0 ? categories.map((c) => c.name) : [...CATEGORIES];
+  const tabs = ["All", ...names];
 
   return (
     <SiteLayout>

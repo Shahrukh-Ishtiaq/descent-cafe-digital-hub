@@ -1,6 +1,7 @@
 import { Link } from "@tanstack/react-router";
 import { MapPin, Phone, Clock, Mail } from "lucide-react";
-import { CAFE } from "@/lib/constants";
+import { CAFE, NEXORA } from "@/lib/constants";
+import nexoraLogo from "@/assets/nexora-logo.png.asset.json";
 
 export function Footer() {
   return (
@@ -25,7 +26,23 @@ export function Footer() {
         </div>
       </div>
       <div className="border-t border-sidebar-border py-4 text-center text-xs text-sidebar-foreground/60">
-        © {new Date().getFullYear()} Descent Cafe · Karachi, Pakistan
+        <p>© {new Date().getFullYear()} Descent Cafe · Karachi, Pakistan</p>
+        <a
+          href={NEXORA.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="mt-2 inline-flex items-center gap-1.5 text-sidebar-foreground/70 transition-colors hover:text-sidebar-primary"
+        >
+          <span>Powered by</span>
+          <img
+            src={nexoraLogo.url}
+            alt={NEXORA.name}
+            className="h-4 w-4 object-contain"
+            width={16}
+            height={16}
+          />
+          <span className="font-semibold">{NEXORA.name}</span>
+        </a>
       </div>
     </footer>
   );
