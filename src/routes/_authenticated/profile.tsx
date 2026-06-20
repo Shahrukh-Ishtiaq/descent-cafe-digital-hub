@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { LogOut } from "lucide-react";
+import { LogOut, Eye, EyeOff, KeyRound } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { SiteLayout } from "@/components/SiteLayout";
 import { Button } from "@/components/ui/button";
@@ -26,6 +26,10 @@ function ProfilePage() {
   const [phone, setPhone] = useState("");
   const [address, setAddress] = useState("");
   const [saving, setSaving] = useState(false);
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [changingPw, setChangingPw] = useState(false);
 
   useEffect(() => {
     if (profile) {
@@ -60,6 +64,28 @@ function ProfilePage() {
     qc.clear();
     await supabase.auth.signOut();
     navigate({ to: "/auth", replace: true });
+  };
+
+  const changePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (newPassword.length < 6) {
+      toast.error("Password must be at least 6 characters.");
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      toast.error("Passwords do not match.");
+      return;
+    }
+    setChangingPw(true);
+    const { error } = await supabase.auth.updateUser({ password: newPassword });
+    setChangingPw(false);
+    if (error) {
+      toast.error(error.message || "Could not update password");
+    } else {
+      toast.success("Password updated successfully");
+      setNewPassword("");
+      setConfirmPassword("");
+    }
   };
 
   return (
@@ -112,6 +138,50 @@ function ProfilePage() {
             Account roles: {roles.join(", ")}
           </p>
         )}
+
+        <form
+          onSubmit={changePassword}
+          className="mt-6 space-y-4 rounded-2xl border border-border bg-card p-6 shadow-card"
+        >
+          <h2 className="flex items-center gap-2 font-display text-lg font-bold text-foreground">
+            <KeyRound className="size-4" /> Change password
+          </h2>
+          <div className="space-y-1.5">
+            <Label htmlFor="newpw">New password</Label>
+            <div className="relative">
+              <Input
+                id="newpw"
+                type={showPassword ? "text" : "password"}
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                minLength={6}
+                className="pr-10"
+                placeholder="At least 6 characters"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword((v) => !v)}
+                aria-label={showPassword ? "Hide password" : "Show password"}
+                className="absolute inset-y-0 right-0 flex items-center px-3 text-muted-foreground hover:text-foreground"
+              >
+                {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+              </button>
+            </div>
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="confirmpw">Confirm new password</Label>
+            <Input
+              id="confirmpw"
+              type={showPassword ? "text" : "password"}
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              minLength={6}
+            />
+          </div>
+          <Button type="submit" className="w-full" disabled={changingPw}>
+            {changingPw ? "Updating…" : "Update password"}
+          </Button>
+        </form>
 
         <Button
           variant="outline"
