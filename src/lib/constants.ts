@@ -1,13 +1,19 @@
 export const CAFE = {
   name: "Descent Cafe",
   tagline: "Where every cup feels like coming home.",
-  address: "Buffer Zone, Sector 16-A, North Karachi, Karachi, Pakistan",
+  address: "Buffer Zone, Sector 15-A, Karachi, Pakistan",
   phone: "+92 300 1234567",
   phoneHref: "tel:+923001234567",
   whatsapp: "923001234567",
-  email: "hello@descentcafe.pk",
+  email: "descentcafe@gmail.com",
   hours: "Open daily · 8:00 AM – 1:00 AM",
-  mapQuery: "Buffer Zone Sector 16-A North Karachi Pakistan",
+  mapQuery: "Buffer Zone Sector 15-A Karachi Pakistan",
+};
+
+// Studio credit shown in the footer.
+export const NEXORA = {
+  name: "Nexora Studio",
+  url: "https://nexora-studio-web.vercel.app",
 };
 
 export const CATEGORIES = [

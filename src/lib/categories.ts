@@ -4,6 +4,8 @@ import parathas from "@/assets/cat-parathas.jpg";
 import snacks from "@/assets/cat-snacks.jpg";
 import beverages from "@/assets/cat-beverages.jpg";
 import desserts from "@/assets/cat-desserts.jpg";
+import { useQuery } from "@tanstack/react-query";
+import { sb } from "./db";
 
 export const CATEGORY_IMAGES: Record<string, string> = {
   Coffee: coffee,
@@ -25,4 +27,28 @@ export const CATEGORY_BLURBS: Record<string, string> = {
 
 export function categoryImage(category: string, fallback?: string | null) {
   return fallback || CATEGORY_IMAGES[category] || CATEGORY_IMAGES.Coffee;
+}
+
+export interface Category {
+  id: string;
+  name: string;
+  blurb: string | null;
+  image_url: string | null;
+  sort_order: number;
+}
+
+// Admin-managed categories, used on the Home and Menu pages.
+export function useCategories() {
+  return useQuery({
+    queryKey: ["categories"],
+    staleTime: 60_000,
+    queryFn: async (): Promise<Category[]> => {
+      const { data, error } = await sb
+        .from("categories")
+        .select("*")
+        .order("sort_order");
+      if (error) throw error;
+      return (data ?? []) as Category[];
+    },
+  });
 }
