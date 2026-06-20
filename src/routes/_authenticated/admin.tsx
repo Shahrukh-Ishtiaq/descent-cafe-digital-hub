@@ -133,8 +133,14 @@ function AdminPage() {
                 <TabsTrigger value="products" className="gap-1.5">
                   <Package className="size-4" /> Products
                 </TabsTrigger>
+                <TabsTrigger value="categories" className="gap-1.5">
+                  <Layers className="size-4" /> Categories
+                </TabsTrigger>
                 <TabsTrigger value="promotions" className="gap-1.5">
                   <Tag className="size-4" /> Promotions
+                </TabsTrigger>
+                <TabsTrigger value="delivery" className="gap-1.5">
+                  <Truck className="size-4" /> Delivery
                 </TabsTrigger>
                 <TabsTrigger value="customers" className="gap-1.5">
                   <Users className="size-4" /> Customers
@@ -156,8 +162,14 @@ function AdminPage() {
               <TabsContent value="products">
                 <ProductsTab />
               </TabsContent>
+              <TabsContent value="categories">
+                <CategoriesTab />
+              </TabsContent>
               <TabsContent value="promotions">
                 <PromotionsTab />
+              </TabsContent>
+              <TabsContent value="delivery">
+                <DeliveryTab />
               </TabsContent>
               <TabsContent value="customers">
                 <CustomersTab />
