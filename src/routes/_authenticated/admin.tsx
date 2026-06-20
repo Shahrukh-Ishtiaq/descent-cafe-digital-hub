@@ -584,6 +584,9 @@ function ProductsTab() {
   const [form, setForm] = useState({ ...EMPTY_PRODUCT });
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const { data: categoryRows = [] } = useCategories();
+  const categoryNames =
+    categoryRows.length > 0 ? categoryRows.map((c) => c.name) : [...CATEGORIES];
 
   const { data: products = [] } = useQuery({
     queryKey: ["admin-products"],
@@ -740,7 +743,7 @@ function ProductsTab() {
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            {CATEGORIES.map((c) => (
+            {categoryNames.map((c) => (
               <SelectItem key={c} value={c}>
                 {c}
               </SelectItem>
