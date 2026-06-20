@@ -5,14 +5,14 @@ import { SiteLayout } from "@/components/SiteLayout";
 import { Button } from "@/components/ui/button";
 import { PromoBanner } from "@/components/PromoBanner";
 import { CAFE, CATEGORIES } from "@/lib/constants";
-import { CATEGORY_IMAGES, CATEGORY_BLURBS } from "@/lib/categories";
+import { CATEGORY_IMAGES, CATEGORY_BLURBS, categoryImage, useCategories } from "@/lib/categories";
 import hero from "@/assets/hero.jpg";
 
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
       { title: "Descent Cafe — Coffee, Chai & Parathas in Karachi" },
-      { name: "description", content: "Order coffee, chai, parathas and more from Descent Cafe in Buffer Zone, Sector 16-A, Karachi. Fast home delivery and online ordering." },
+      { name: "description", content: "Order coffee, chai, parathas and more from Descent Cafe in Buffer Zone, Sector 15-A, Karachi. Fast home delivery and online ordering." },
       { property: "og:title", content: "Descent Cafe — Karachi" },
       { property: "og:description", content: "Premium coffee, desi chai & fresh parathas delivered to your door in Karachi." },
       { property: "og:image", content: hero },
@@ -22,6 +22,19 @@ export const Route = createFileRoute("/")({
 });
 
 function Index() {
+  const { data: categories = [] } = useCategories();
+  const cats =
+    categories.length > 0
+      ? categories.map((c) => ({
+          name: c.name,
+          blurb: c.blurb || CATEGORY_BLURBS[c.name] || "",
+          image: categoryImage(c.name, c.image_url),
+        }))
+      : CATEGORIES.map((c) => ({
+          name: c,
+          blurb: CATEGORY_BLURBS[c] || "",
+          image: CATEGORY_IMAGES[c],
+        }));
   return (
     <SiteLayout>
       {/* Hero */}
@@ -30,7 +43,7 @@ function Index() {
         <div className="absolute inset-0 bg-gradient-to-r from-primary/90 via-primary/70 to-primary/30" />
         <div className="relative mx-auto flex max-w-6xl flex-col items-start gap-5 px-4 py-16 sm:py-24 md:py-36">
           <span className="rounded-full bg-background/15 px-4 py-1.5 text-sm font-medium text-primary-foreground backdrop-blur">
-            Buffer Zone, Sector 16-A · Karachi
+            Buffer Zone, Sector 15-A · Karachi
           </span>
           <h1 className="max-w-2xl text-balance font-display text-3xl font-black leading-[1.08] text-primary-foreground sm:text-4xl md:text-6xl">
             Brewed with love, delivered to your door.
@@ -58,7 +71,7 @@ function Index() {
           {[
             { icon: Truck, title: "Fast Delivery", text: "Hot & fresh across North Karachi." },
             { icon: Clock, title: CAFE.hours.replace("Open daily · ", ""), text: "Open every single day." },
-            { icon: MapPin, title: "Dine-in & Takeaway", text: "Sector 16-A, Buffer Zone." },
+            { icon: MapPin, title: "Dine-in & Takeaway", text: "Sector 15-A, Buffer Zone." },
           ].map((f) => (
             <div key={f.title} className="flex items-start gap-3">
               <span className="grid size-11 shrink-0 place-items-center rounded-xl bg-accent/15 text-accent"><f.icon className="size-5" /></span>
@@ -78,13 +91,13 @@ function Index() {
           <h2 className="mt-1 font-display text-3xl font-bold text-foreground md:text-4xl">Explore by category</h2>
         </div>
         <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-          {CATEGORIES.map((cat) => (
-            <Link key={cat} to="/menu" className="group relative overflow-hidden rounded-2xl shadow-card">
-              <img src={CATEGORY_IMAGES[cat]} alt={cat} loading="lazy" width={800} height={600} className="aspect-[5/3] w-full object-cover transition-transform duration-500 group-hover:scale-105" />
+          {cats.map((cat) => (
+            <Link key={cat.name} to="/menu" className="group relative overflow-hidden rounded-2xl shadow-card">
+              <img src={cat.image} alt={cat.name} loading="lazy" width={800} height={600} className="aspect-[5/3] w-full object-cover transition-transform duration-500 group-hover:scale-105" />
               <div className="absolute inset-0 bg-gradient-to-t from-primary/90 via-primary/30 to-transparent" />
               <div className="absolute inset-x-0 bottom-0 p-5">
-                <h3 className="font-display text-xl font-bold text-primary-foreground">{cat}</h3>
-                <p className="text-sm text-primary-foreground/80">{CATEGORY_BLURBS[cat]}</p>
+                <h3 className="font-display text-xl font-bold text-primary-foreground">{cat.name}</h3>
+                <p className="text-sm text-primary-foreground/80">{cat.blurb}</p>
               </div>
             </Link>
           ))}
