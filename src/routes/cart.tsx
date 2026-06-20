@@ -11,18 +11,18 @@ import { useCart } from "@/lib/cart";
 import { useAuth } from "@/lib/auth";
 import { sb } from "@/lib/db";
 import { formatPrice, CAFE } from "@/lib/constants";
+import { useDeliveryFee } from "@/lib/settings";
 
 export const Route = createFileRoute("/cart")({
   head: () => ({ meta: [{ title: "Your Cart — Descent Cafe" }] }),
   component: CartPage,
 });
 
-const DELIVERY_FEE = 100;
-
 function CartPage() {
   const { items, setQty, remove, total, clear } = useCart();
   const { user, profile } = useAuth();
   const navigate = useNavigate();
+  const DELIVERY_FEE = useDeliveryFee();
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [address, setAddress] = useState("");
