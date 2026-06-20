@@ -1295,3 +1295,323 @@ function TeamTab() {
     </div>
   );
 }
+
+/* ----------------------------- Categories ----------------------------- */
+function CategoriesTab() {
+  const qc = useQueryClient();
+  const { data: categories = [] } = useCategories();
+  const [form, setForm] = useState({ name: "", blurb: "", image_url: "" });
+  const [uploading, setUploading] = useState(false);
+  const [editing, setEditing] = useState<Record<string, Partial<Category>>>({});
+
+  const refresh = () => {
+    qc.invalidateQueries({ queryKey: ["categories"] });
+  };
+
+  const handleUpload = async (file: File, onDone: (url: string) => void) => {
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error("Please choose an image under 5MB.");
+      return;
+    }
+    setUploading(true);
+    try {
+      const url = await uploadProductImage(file);
+      onDone(url);
+      toast.success("Image uploaded");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Upload failed");
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const add = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const name = form.name.trim();
+    if (!name) return;
+    const sort_order =
+      (categories.reduce((m, c) => Math.max(m, c.sort_order), 0) || 0) + 1;
+    const { error } = await sb.from("categories").insert({
+      name,
+      blurb: form.blurb.trim() || null,
+      image_url: form.image_url.trim() || null,
+      sort_order,
+    });
+    if (error)
+      toast.error(
+        error.message?.includes("duplicate")
+          ? "A category with that name already exists."
+          : "Could not add category",
+      );
+    else {
+      toast.success("Category added");
+      setForm({ name: "", blurb: "", image_url: "" });
+      refresh();
+    }
+  };
+
+  const saveEdit = async (id: string) => {
+    const fields = editing[id];
+    if (!fields) return;
+    const { error } = await sb.from("categories").update(fields).eq("id", id);
+    if (error) toast.error("Update failed");
+    else {
+      toast.success("Category updated");
+      setEditing((e) => {
+        const next = { ...e };
+        delete next[id];
+        return next;
+      });
+      refresh();
+    }
+  };
+
+  const del = async (id: string) => {
+    const { error } = await sb.from("categories").delete().eq("id", id);
+    if (error) toast.error("Delete failed");
+    else {
+      toast.success("Category deleted");
+      refresh();
+    }
+  };
+
+  return (
+    <div className="mt-4 grid gap-8 lg:grid-cols-[1fr_1.5fr]">
+      <form
+        onSubmit={add}
+        className="h-fit space-y-3 rounded-2xl border border-border bg-card p-5 shadow-card"
+      >
+        <h3 className="font-display text-lg font-bold text-foreground">
+          Add category
+        </h3>
+        <Input
+          placeholder="Name (e.g. Wraps)"
+          value={form.name}
+          onChange={(e) => setForm({ ...form, name: e.target.value })}
+          required
+          maxLength={40}
+        />
+        <Textarea
+          placeholder="Short blurb (optional)"
+          value={form.blurb}
+          onChange={(e) => setForm({ ...form, blurb: e.target.value })}
+          maxLength={140}
+        />
+        <div className="space-y-2 rounded-xl border border-dashed border-border p-3">
+          <p className="text-xs font-medium text-muted-foreground">
+            Category photo (optional)
+          </p>
+          {form.image_url && (
+            <img
+              src={form.image_url}
+              alt="Preview"
+              className="h-24 w-full rounded-lg object-cover"
+            />
+          )}
+          <label className="flex cursor-pointer items-center justify-center gap-2 rounded-lg bg-secondary px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-secondary/80">
+            <Upload className="size-4" />
+            {uploading ? "Uploading…" : "Upload image"}
+            <input
+              type="file"
+              accept="image/*"
+              className="hidden"
+              disabled={uploading}
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file)
+                  handleUpload(file, (url) =>
+                    setForm((f) => ({ ...f, image_url: url })),
+                  );
+                e.target.value = "";
+              }}
+            />
+          </label>
+        </div>
+        <Button type="submit" className="w-full">
+          <Plus /> Add category
+        </Button>
+      </form>
+
+      <div className="space-y-2">
+        {categories.length === 0 && (
+          <p className="py-8 text-center text-sm text-muted-foreground">
+            No categories yet.
+          </p>
+        )}
+        {categories.map((c) => {
+          const draft = editing[c.id];
+          const isEditing = !!draft;
+          return (
+            <div
+              key={c.id}
+              className="rounded-xl border border-border bg-card p-3 shadow-card"
+            >
+              <div className="flex items-center gap-3">
+                {c.image_url && (
+                  <img
+                    src={c.image_url}
+                    alt={c.name}
+                    className="size-12 shrink-0 rounded-lg object-cover"
+                    width={48}
+                    height={48}
+                  />
+                )}
+                <div className="min-w-0 flex-1">
+                  {isEditing ? (
+                    <Input
+                      value={draft.name ?? c.name}
+                      onChange={(e) =>
+                        setEditing((s) => ({
+                          ...s,
+                          [c.id]: { ...s[c.id], name: e.target.value },
+                        }))
+                      }
+                      className="h-8"
+                      maxLength={40}
+                    />
+                  ) : (
+                    <p className="truncate font-semibold text-foreground">
+                      {c.name}
+                    </p>
+                  )}
+                  {!isEditing && c.blurb && (
+                    <p className="truncate text-xs text-muted-foreground">
+                      {c.blurb}
+                    </p>
+                  )}
+                </div>
+                {isEditing ? (
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="text-accent"
+                    onClick={() => saveEdit(c.id)}
+                  >
+                    <Save className="size-4" />
+                  </Button>
+                ) : (
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    onClick={() =>
+                      setEditing((s) => ({
+                        ...s,
+                        [c.id]: { name: c.name, blurb: c.blurb },
+                      }))
+                    }
+                  >
+                    <Pencil className="size-4" />
+                  </Button>
+                )}
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="text-destructive"
+                  onClick={() => del(c.id)}
+                >
+                  <Trash2 className="size-4" />
+                </Button>
+              </div>
+              {isEditing && (
+                <Textarea
+                  placeholder="Short blurb"
+                  value={draft.blurb ?? c.blurb ?? ""}
+                  onChange={(e) =>
+                    setEditing((s) => ({
+                      ...s,
+                      [c.id]: { ...s[c.id], blurb: e.target.value },
+                    }))
+                  }
+                  className="mt-2"
+                  maxLength={140}
+                />
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/* ----------------------------- Delivery charge ----------------------------- */
+function DeliveryTab() {
+  const qc = useQueryClient();
+  const [fee, setFee] = useState<string>("");
+  const [saving, setSaving] = useState(false);
+
+  const { data: current } = useQuery({
+    queryKey: ["settings", "delivery_fee"],
+    queryFn: async (): Promise<number> => {
+      const { data, error } = await sb
+        .from("app_settings")
+        .select("value")
+        .eq("key", "delivery_fee")
+        .maybeSingle();
+      if (error) throw error;
+      const amount = data?.value?.amount;
+      return typeof amount === "number" ? amount : 100;
+    },
+  });
+
+  useEffect(() => {
+    if (current != null) setFee(String(current));
+  }, [current]);
+
+  const save = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const amount = Number(fee);
+    if (!Number.isFinite(amount) || amount < 0) {
+      toast.error("Enter a valid amount.");
+      return;
+    }
+    setSaving(true);
+    const { error } = await sb
+      .from("app_settings")
+      .upsert(
+        { key: "delivery_fee", value: { amount } },
+        { onConflict: "key" },
+      );
+    setSaving(false);
+    if (error) toast.error("Could not save delivery charge");
+    else {
+      toast.success("Delivery charge updated for all orders");
+      qc.invalidateQueries({ queryKey: ["settings", "delivery_fee"] });
+    }
+  };
+
+  return (
+    <div className="mt-4 max-w-md">
+      <form
+        onSubmit={save}
+        className="space-y-4 rounded-2xl border border-border bg-card p-6 shadow-card"
+      >
+        <h3 className="flex items-center gap-2 font-display text-lg font-bold text-foreground">
+          <Truck className="size-5" /> Global delivery charge
+        </h3>
+        <p className="text-sm text-muted-foreground">
+          This fee is automatically added to every order at checkout. Current:{" "}
+          <span className="font-semibold text-foreground">
+            {current != null ? formatPrice(current) : "…"}
+          </span>
+        </p>
+        <div className="space-y-1.5">
+          <label className="text-sm font-medium text-foreground">
+            Delivery charge (Rs.)
+          </label>
+          <Input
+            type="number"
+            min="0"
+            step="1"
+            value={fee}
+            onChange={(e) => setFee(e.target.value)}
+            required
+          />
+        </div>
+        <Button type="submit" className="w-full" disabled={saving}>
+          {saving ? "Saving…" : "Save delivery charge"}
+        </Button>
+      </form>
+    </div>
+  );
+}
