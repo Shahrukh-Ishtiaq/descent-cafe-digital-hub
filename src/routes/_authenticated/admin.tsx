@@ -479,6 +479,13 @@ function StockAlerts() {
 
 /* ----------------------------- Analytics ----------------------------- */
 function AnalyticsTab() {
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const monthAgoStr = new Date(Date.now() - 29 * 86400000)
+    .toISOString()
+    .slice(0, 10);
+  const [from, setFrom] = useState(monthAgoStr);
+  const [to, setTo] = useState(todayStr);
+
   const { data: orders = [] } = useQuery({
     queryKey: ["admin-orders"],
     queryFn: async (): Promise<Order[]> => {
@@ -491,18 +498,52 @@ function AnalyticsTab() {
     },
   });
 
-  const stats = useMemo(() => {
-    const delivered = orders.filter((o) => o.status === "delivered");
+  const isDelivered = (o: Order) => o.status === "delivered";
+
+  // All-time totals (not affected by the date filter).
+  const allTime = useMemo(() => {
+    const delivered = orders.filter(isDelivered);
+    return {
+      revenue: delivered.reduce((s, o) => s + Number(o.total), 0),
+      orders: orders.length,
+      delivered: delivered.length,
+    };
+  }, [orders]);
+
+  // Everything below respects the selected date range.
+  const range = useMemo(() => {
+    const start = new Date(from + "T00:00:00").getTime();
+    const end = new Date(to + "T23:59:59").getTime();
+    const inRange = orders.filter((o) => {
+      const t = new Date(o.created_at).getTime();
+      return t >= start && t <= end;
+    });
+    const delivered = inRange.filter(isDelivered);
     const revenue = delivered.reduce((s, o) => s + Number(o.total), 0);
-    const pending = orders.filter((o) =>
+    const active = inRange.filter((o) =>
       ["pending", "preparing", "out_for_delivery"].includes(o.status),
     ).length;
-    const today = new Date().toDateString();
-    const todayCount = orders.filter(
-      (o) => new Date(o.created_at).toDateString() === today,
-    ).length;
+
+    // Build a continuous daily series across the range.
+    const days: { date: string; revenue: number; orders: number }[] = [];
+    const map: Record<string, { revenue: number; orders: number }> = {};
+    inRange.forEach((o) => {
+      const d = new Date(o.created_at).toISOString().slice(0, 10);
+      map[d] = map[d] || { revenue: 0, orders: 0 };
+      map[d].orders += 1;
+      if (isDelivered(o)) map[d].revenue += Number(o.total);
+    });
+    for (
+      let t = new Date(from + "T00:00:00").getTime();
+      t <= new Date(to + "T00:00:00").getTime();
+      t += 86400000
+    ) {
+      const d = new Date(t).toISOString().slice(0, 10);
+      days.push({ date: d, ...(map[d] || { revenue: 0, orders: 0 }) });
+    }
+
     const itemCounts: Record<string, number> = {};
-    orders.forEach((o) =>
+    inRange.forEach((o) =>
       o.order_items?.forEach((it) => {
         itemCounts[it.name] = (itemCounts[it.name] || 0) + it.quantity;
       }),
@@ -510,28 +551,98 @@ function AnalyticsTab() {
     const topItems = Object.entries(itemCounts)
       .sort((a, b) => b[1] - a[1])
       .slice(0, 5);
+
     return {
       revenue,
+      orders: inRange.length,
       delivered: delivered.length,
-      pending,
-      todayCount,
-      total: orders.length,
+      active,
       avg: delivered.length ? revenue / delivered.length : 0,
+      days,
       topItems,
     };
-  }, [orders]);
+  }, [orders, from, to]);
+
+  const maxRevenue = Math.max(1, ...range.days.map((d) => d.revenue));
+
+  const exportCsv = () => {
+    const header = "Date,Orders,Revenue (delivered)";
+    const rows = range.days.map(
+      (d) => `${d.date},${d.orders},${d.revenue}`,
+    );
+    const csv = [header, ...rows].join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `descent-cafe-report_${from}_to_${to}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast.success("Report downloaded");
+  };
 
   const cards = [
-    { label: "Revenue (delivered)", value: formatPrice(stats.revenue) },
-    { label: "Total orders", value: String(stats.total) },
-    { label: "Orders today", value: String(stats.todayCount) },
-    { label: "Active orders", value: String(stats.pending) },
-    { label: "Delivered", value: String(stats.delivered) },
-    { label: "Avg. order value", value: formatPrice(Math.round(stats.avg)) },
+    { label: "Revenue (all-time)", value: formatPrice(allTime.revenue) },
+    { label: "Revenue (in range)", value: formatPrice(range.revenue) },
+    { label: "Orders (in range)", value: String(range.orders) },
+    { label: "Delivered (in range)", value: String(range.delivered) },
+    { label: "Active orders", value: String(range.active) },
+    { label: "Avg. order value", value: formatPrice(Math.round(range.avg)) },
   ];
 
   return (
     <div className="mt-4 space-y-6">
+      {/* Date filter + export */}
+      <div className="flex flex-wrap items-end gap-3 rounded-2xl border border-border bg-card p-4 shadow-card">
+        <div className="space-y-1">
+          <label className="text-xs font-medium text-muted-foreground">From</label>
+          <Input
+            type="date"
+            value={from}
+            max={to}
+            onChange={(e) => setFrom(e.target.value)}
+            className="h-9 w-40"
+          />
+        </div>
+        <div className="space-y-1">
+          <label className="text-xs font-medium text-muted-foreground">To</label>
+          <Input
+            type="date"
+            value={to}
+            min={from}
+            max={todayStr}
+            onChange={(e) => setTo(e.target.value)}
+            className="h-9 w-40"
+          />
+        </div>
+        <div className="flex gap-1.5">
+          {[
+            { label: "7d", days: 7 },
+            { label: "30d", days: 30 },
+            { label: "90d", days: 90 },
+          ].map((p) => (
+            <Button
+              key={p.label}
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setFrom(
+                  new Date(Date.now() - (p.days - 1) * 86400000)
+                    .toISOString()
+                    .slice(0, 10),
+                );
+                setTo(todayStr);
+              }}
+            >
+              {p.label}
+            </Button>
+          ))}
+        </div>
+        <Button size="sm" className="ml-auto" onClick={exportCsv}>
+          <Download className="size-4" /> Export CSV
+        </Button>
+      </div>
+
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {cards.map((c) => (
           <div
@@ -545,15 +656,50 @@ function AnalyticsTab() {
           </div>
         ))}
       </div>
+
+      {/* Daily revenue trend */}
       <div className="rounded-2xl border border-border bg-card p-5 shadow-card">
         <h3 className="font-display text-lg font-bold text-foreground">
-          Best sellers
+          Daily revenue & orders
         </h3>
-        {stats.topItems.length === 0 ? (
+        {range.days.every((d) => d.orders === 0) ? (
+          <p className="mt-2 text-sm text-muted-foreground">
+            No orders in this range.
+          </p>
+        ) : (
+          <div className="mt-4 flex h-48 items-end gap-1 overflow-x-auto">
+            {range.days.map((d) => (
+              <div
+                key={d.date}
+                className="group flex min-w-[10px] flex-1 flex-col items-center justify-end"
+                title={`${d.date}\n${formatPrice(d.revenue)} · ${d.orders} order(s)`}
+              >
+                <div
+                  className="w-full rounded-t bg-accent/80 transition-colors group-hover:bg-accent"
+                  style={{
+                    height: `${Math.max(2, (d.revenue / maxRevenue) * 100)}%`,
+                  }}
+                />
+              </div>
+            ))}
+          </div>
+        )}
+        <div className="mt-2 flex justify-between text-xs text-muted-foreground">
+          <span>{from}</span>
+          <span>{to}</span>
+        </div>
+      </div>
+
+      {/* Best sellers */}
+      <div className="rounded-2xl border border-border bg-card p-5 shadow-card">
+        <h3 className="font-display text-lg font-bold text-foreground">
+          Best sellers (in range)
+        </h3>
+        {range.topItems.length === 0 ? (
           <p className="mt-2 text-sm text-muted-foreground">No sales yet.</p>
         ) : (
           <ul className="mt-3 space-y-2">
-            {stats.topItems.map(([name, qty]) => (
+            {range.topItems.map(([name, qty]) => (
               <li
                 key={name}
                 className="flex items-center justify-between text-sm"
