@@ -5,6 +5,7 @@ import { Eye, EyeOff } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { lovable } from "@/integrations/lovable/index";
 import { useAuth } from "@/lib/auth";
+import { ensurePrimaryAdmin } from "@/lib/admin.functions";
 import { SiteLayout } from "@/components/SiteLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -25,7 +26,7 @@ function AuthPage() {
   const [phone, setPhone] = useState("");
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
-  const { user, roles, isRider, isStaff } = useAuth();
+  const { user, roles, isRider, isStaff, refreshProfile } = useAuth();
 
   useEffect(() => {
     if (!user) return;
@@ -63,6 +64,13 @@ function AuthPage() {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
         toast.success("Welcome back!");
+      }
+      // Always promote the cafe owner account to admin on sign-in.
+      try {
+        const res = await ensurePrimaryAdmin();
+        if (res?.granted) await refreshProfile();
+      } catch {
+        // Non-fatal: a normal customer login is unaffected.
       }
       navigate({ to: "/menu" });
     } catch (err) {

@@ -1,6 +1,35 @@
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 
+// The primary owner account that is always granted admin access on sign-in.
+const PRIMARY_ADMIN_EMAIL = "descentcafe@gmail.com";
+
+// Ensures the signed-in user is granted the admin role when their email matches
+// the cafe's primary owner account. Safe to call on every login: it only acts
+// for the one hard-coded owner email and is a no-op for everyone else.
+export const ensurePrimaryAdmin = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const email = String(
+      (context.claims as { email?: string }).email ?? "",
+    ).toLowerCase();
+    if (email !== PRIMARY_ADMIN_EMAIL) return { granted: false };
+
+    const { supabaseAdmin } = await import(
+      "@/integrations/supabase/client.server"
+    );
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const admin = supabaseAdmin as any;
+
+    await admin
+      .from("user_roles")
+      .upsert(
+        { user_id: context.userId, role: "admin" },
+        { onConflict: "user_id,role" },
+      );
+    return { granted: true };
+  });
+
 // One-time bootstrap: the first signed-in user who calls this becomes admin.
 // Once an admin exists, only existing admins get a success response.
 export const claimAdmin = createServerFn({ method: "POST" })
