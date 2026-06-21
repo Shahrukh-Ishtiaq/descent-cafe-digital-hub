@@ -164,6 +164,9 @@ function RiderPage() {
           )}
         </p>
 
+        <h2 className="mt-8 font-display text-xl font-bold text-foreground">
+          Active deliveries ({grouped.todays.length})
+        </h2>
         {isLoading ? (
           <p className="py-8 text-center text-muted-foreground">Loading…</p>
         ) : grouped.todays.length === 0 ? (
