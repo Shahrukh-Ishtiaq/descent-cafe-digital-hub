@@ -89,18 +89,30 @@ function AuthPage() {
       <div className="mx-auto flex max-w-md flex-col px-4 py-16">
         <div className="rounded-2xl border border-border bg-card p-6 shadow-card sm:p-8">
           <h1 className="font-display text-2xl font-bold text-foreground">
-            {mode === "login" ? "Welcome back" : "Create your account"}
+            {mode === "login"
+              ? "Welcome back"
+              : mode === "register"
+                ? "Create your account"
+                : "Reset your password"}
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            {mode === "login" ? "Sign in to order from " : "Join "} {CAFE.name}.
+            {mode === "login"
+              ? `Sign in to order from ${CAFE.name}.`
+              : mode === "register"
+                ? `Join ${CAFE.name}.`
+                : "Enter your email and we'll send you a secure reset link."}
           </p>
 
-          <Button variant="outline" className="mt-6 w-full" onClick={google} type="button">
-            Continue with Google
-          </Button>
-          <div className="my-5 flex items-center gap-3 text-xs text-muted-foreground">
-            <span className="h-px flex-1 bg-border" /> or <span className="h-px flex-1 bg-border" />
-          </div>
+          {mode !== "forgot" && (
+            <>
+              <Button variant="outline" className="mt-6 w-full" onClick={google} type="button">
+                Continue with Google
+              </Button>
+              <div className="my-5 flex items-center gap-3 text-xs text-muted-foreground">
+                <span className="h-px flex-1 bg-border" /> or <span className="h-px flex-1 bg-border" />
+              </div>
+            </>
+          )}
 
           <form onSubmit={submit} className="space-y-4">
             {mode === "register" && (
@@ -119,6 +131,7 @@ function AuthPage() {
               <Label htmlFor="email">Email</Label>
               <Input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
             </div>
+            {mode !== "forgot" && (
             <div className="space-y-1.5">
               <Label htmlFor="password">Password</Label>
               <div className="relative">
@@ -141,20 +154,50 @@ function AuthPage() {
                 </button>
               </div>
             </div>
+            )}
+            {mode === "login" && (
+              <div className="text-right">
+                <button
+                  type="button"
+                  className="text-sm font-medium text-accent hover:underline"
+                  onClick={() => setMode("forgot")}
+                >
+                  Forgot password?
+                </button>
+              </div>
+            )}
             <Button type="submit" className="w-full" disabled={loading}>
-              {loading ? "Please wait…" : mode === "login" ? "Sign in" : "Create account"}
+              {loading
+                ? "Please wait…"
+                : mode === "login"
+                  ? "Sign in"
+                  : mode === "register"
+                    ? "Create account"
+                    : "Send reset link"}
             </Button>
           </form>
 
-          <p className="mt-5 text-center text-sm text-muted-foreground">
-            {mode === "login" ? "New here? " : "Already have an account? "}
-            <button
-              className="font-semibold text-accent hover:underline"
-              onClick={() => setMode(mode === "login" ? "register" : "login")}
-            >
-              {mode === "login" ? "Create an account" : "Sign in"}
-            </button>
-          </p>
+          {mode === "forgot" ? (
+            <p className="mt-5 text-center text-sm text-muted-foreground">
+              Remembered it?{" "}
+              <button
+                className="font-semibold text-accent hover:underline"
+                onClick={() => setMode("login")}
+              >
+                Back to sign in
+              </button>
+            </p>
+          ) : (
+            <p className="mt-5 text-center text-sm text-muted-foreground">
+              {mode === "login" ? "New here? " : "Already have an account? "}
+              <button
+                className="font-semibold text-accent hover:underline"
+                onClick={() => setMode(mode === "login" ? "register" : "login")}
+              >
+                {mode === "login" ? "Create an account" : "Sign in"}
+              </button>
+            </p>
+          )}
         </div>
         <Link to="/menu" className="mt-4 text-center text-sm text-muted-foreground hover:text-foreground">
           ← Back to menu
