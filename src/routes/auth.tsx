@@ -17,7 +17,7 @@ export const Route = createFileRoute("/auth")({
 });
 
 function AuthPage() {
-  const [mode, setMode] = useState<"login" | "register">("login");
+  const [mode, setMode] = useState<"login" | "register" | "forgot">("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -39,6 +39,15 @@ function AuthPage() {
     e.preventDefault();
     setLoading(true);
     try {
+      if (mode === "forgot") {
+        const { error } = await supabase.auth.resetPasswordForEmail(email, {
+          redirectTo: `${window.location.origin}/reset-password`,
+        });
+        if (error) throw error;
+        toast.success("If that email exists, a reset link is on its way.");
+        setMode("login");
+        return;
+      }
       if (mode === "register") {
         const { error } = await supabase.auth.signUp({
           email,
@@ -57,7 +66,14 @@ function AuthPage() {
       }
       navigate({ to: "/menu" });
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Something went wrong");
+      const msg = err instanceof Error ? err.message : "Something went wrong";
+      // Friendlier message for the common duplicate-email signup case.
+      if (/already registered|already exists|user already/i.test(msg)) {
+        toast.error("That email is already registered. Try signing in instead.");
+        setMode("login");
+      } else {
+        toast.error(msg);
+      }
     } finally {
       setLoading(false);
     }
