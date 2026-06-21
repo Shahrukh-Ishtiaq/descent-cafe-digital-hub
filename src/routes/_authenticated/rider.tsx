@@ -68,12 +68,10 @@ function RiderPage() {
   }, [user, qc]);
 
   const grouped = useMemo(() => {
-    const today = new Date().toDateString();
+    // Active = any assigned order still in progress, no matter when it was
+    // placed. Only delivered/cancelled orders move to history.
     const todays = orders.filter(
-      (o) =>
-        new Date(o.created_at).toDateString() === today &&
-        o.status !== "delivered" &&
-        o.status !== "cancelled",
+      (o) => o.status !== "delivered" && o.status !== "cancelled",
     );
     const history = orders.filter((o) => !todays.includes(o));
     const byDate: Record<string, Order[]> = {};
