@@ -1202,18 +1202,17 @@ function CustomersTab() {
 function TeamTab() {
   const qc = useQueryClient();
   const setRole = useServerFn(setUserRole);
-  const createUser = useServerFn(createStaffUser);
+  const createUser = useServerFn(createRider);
 
   const [roleForm, setRoleForm] = useState({
     email: "",
-    role: "rider" as "admin" | "staff" | "rider" | "customer",
+    role: "rider" as "admin" | "rider" | "customer",
   });
   const [newUser, setNewUser] = useState({
     email: "",
     password: "",
     full_name: "",
     phone: "",
-    role: "rider" as "staff" | "rider",
   });
   const [busy, setBusy] = useState(false);
 
@@ -1223,7 +1222,7 @@ function TeamTab() {
       const { data: roleRows } = await sb
         .from("user_roles")
         .select("user_id, role")
-        .in("role", ["admin", "staff", "rider"]);
+        .in("role", ["admin", "rider"]);
       const ids = [
         ...new Set((roleRows ?? []).map((r: { user_id: string }) => r.user_id)),
       ];
