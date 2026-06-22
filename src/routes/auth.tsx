@@ -163,10 +163,25 @@ function AuthPage() {
                 </div>
               </>
             )}
-            <div className="space-y-1.5">
-              <Label htmlFor="email">Email</Label>
-              <Input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
-            </div>
+            {mode === "login" ? (
+              <div className="space-y-1.5">
+                <Label htmlFor="identifier">Email or phone</Label>
+                <Input
+                  id="identifier"
+                  type="text"
+                  value={identifier}
+                  onChange={(e) => setIdentifier(e.target.value)}
+                  required
+                  placeholder="you@email.com or 03xx-xxxxxxx"
+                  autoComplete="username"
+                />
+              </div>
+            ) : (
+              <div className="space-y-1.5">
+                <Label htmlFor="email">Email</Label>
+                <Input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
+              </div>
+            )}
             {mode !== "forgot" && (
             <div className="space-y-1.5">
               <Label htmlFor="password">Password</Label>
