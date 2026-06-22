@@ -1269,13 +1269,12 @@ function TeamTab() {
     setBusy(true);
     try {
       await createUser({ data: newUser });
-      toast.success(`${ROLE_LABELS[newUser.role]} account created`);
+      toast.success("Rider account created");
       setNewUser({
         email: "",
         password: "",
         full_name: "",
         phone: "",
-        role: "rider",
       });
       refresh();
     } catch (err) {
@@ -1293,8 +1292,12 @@ function TeamTab() {
           className="space-y-3 rounded-2xl border border-border bg-card p-5 shadow-card"
         >
           <h3 className="font-display text-lg font-bold text-foreground">
-            Create staff / rider account
+            Create Rider Account
           </h3>
+          <p className="text-xs text-muted-foreground">
+            Riders sign in with these credentials and only see their assigned
+            deliveries.
+          </p>
           <Input
             placeholder="Full name"
             value={newUser.full_name}
@@ -1304,9 +1307,10 @@ function TeamTab() {
             required
           />
           <Input
-            placeholder="Phone"
+            placeholder="Phone (03xx-xxxxxxx)"
             value={newUser.phone}
             onChange={(e) => setNewUser({ ...newUser, phone: e.target.value })}
+            required
           />
           <Input
             type="email"
@@ -1325,22 +1329,8 @@ function TeamTab() {
             required
             minLength={6}
           />
-          <Select
-            value={newUser.role}
-            onValueChange={(v) =>
-              setNewUser({ ...newUser, role: v as "staff" | "rider" })
-            }
-          >
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="rider">Rider</SelectItem>
-              <SelectItem value="staff">Staff</SelectItem>
-            </SelectContent>
-          </Select>
           <Button type="submit" className="w-full" disabled={busy}>
-            <Plus /> Create account
+            <Plus /> Create Rider Account
           </Button>
         </form>
 
@@ -1370,7 +1360,6 @@ function TeamTab() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="admin">Admin</SelectItem>
-              <SelectItem value="staff">Staff</SelectItem>
               <SelectItem value="rider">Rider</SelectItem>
               <SelectItem value="customer">Customer</SelectItem>
             </SelectContent>
