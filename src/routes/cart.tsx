@@ -153,7 +153,12 @@ function CartPage() {
   return (
     <SiteLayout>
       <div className="mx-auto max-w-6xl px-4 py-12">
-        <h1 className="font-display text-3xl font-bold text-foreground">Your Order</h1>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h1 className="font-display text-3xl font-bold text-foreground">Your Order</h1>
+          <Button asChild variant="outline" size="sm">
+            <Link to="/menu">← Continue Shopping</Link>
+          </Button>
+        </div>
         <div className="mt-8 grid gap-8 lg:grid-cols-[1.4fr_1fr]">
           <div className="space-y-3">
             {items.map((i) => (
