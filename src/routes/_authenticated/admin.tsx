@@ -189,6 +189,7 @@ function AdminPage() {
 function OrdersTab() {
   const qc = useQueryClient();
   const [soundOn, setSoundOn] = useState(true);
+  const [search, setSearch] = useState("");
 
   const { data: orders = [], isLoading } = useQuery({
     queryKey: ["admin-orders"],
@@ -245,6 +246,17 @@ function OrdersTab() {
   const pendingCount = orders.filter((o) => o.status === "pending").length;
   useRepeatingAlarm(pendingCount > 0, "admin", soundOn);
 
+  const q = search.trim().toLowerCase();
+  const visibleOrders = q
+    ? orders.filter(
+        (o) =>
+          o.customer_name.toLowerCase().includes(q) ||
+          o.phone.toLowerCase().includes(q) ||
+          o.id.toLowerCase().includes(q) ||
+          (o.address || "").toLowerCase().includes(q),
+      )
+    : orders;
+
   const updateStatus = async (id: string, status: string) => {
     const { error } = await sb.from("orders").update({ status }).eq("id", id);
     if (error) toast.error("Update failed");
@@ -290,15 +302,21 @@ function OrdersTab() {
           {soundOn ? "Alerts on" : "Alerts off"}
         </Button>
       </div>
+      <Input
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+        placeholder="Search by name, phone, address or order number…"
+        className="mb-4 h-9"
+      />
       {isLoading ? (
         <p className="py-12 text-center text-muted-foreground">
           Loading orders…
         </p>
-      ) : orders.length === 0 ? (
+      ) : visibleOrders.length === 0 ? (
         <p className="py-12 text-center text-muted-foreground">No orders yet.</p>
       ) : (
         <div className="space-y-4">
-          {orders.map((o) => (
+          {visibleOrders.map((o) => (
             <div
               key={o.id}
               className="rounded-2xl border border-border bg-card p-5 shadow-card"
