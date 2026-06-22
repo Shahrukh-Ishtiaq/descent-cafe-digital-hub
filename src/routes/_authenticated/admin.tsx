@@ -40,7 +40,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAuth } from "@/lib/auth";
 import { sb } from "@/lib/db";
-import { claimAdmin, setUserRole, createStaffUser } from "@/lib/admin.functions";
+import { claimAdmin, setUserRole, createRider } from "@/lib/admin.functions";
 import {
   formatPrice,
   CATEGORIES,
@@ -75,18 +75,18 @@ async function uploadProductImage(file: File): Promise<string> {
 }
 
 function AdminPage() {
-  const { isStaff, isAdmin, refreshProfile } = useAuth();
+  const { isAdmin, refreshProfile } = useAuth();
   const claim = useServerFn(claimAdmin);
 
-  if (!isStaff) {
+  if (!isAdmin) {
     return (
       <SiteLayout>
         <div className="mx-auto max-w-md px-4 py-24 text-center">
           <h1 className="font-display text-2xl font-bold text-foreground">
-            Staff access only
+            Admin access only
           </h1>
           <p className="mt-2 text-muted-foreground">
-            This area is for Descent Cafe staff. If you’re the owner setting up
+            This area is for Descent Cafe admins. If you’re the owner setting up
             for the first time, claim admin access below.
           </p>
           <Button
