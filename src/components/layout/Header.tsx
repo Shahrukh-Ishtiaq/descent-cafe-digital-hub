@@ -16,7 +16,7 @@ const NAV = [
 
 export function Header() {
   const { count } = useCart();
-  const { user, isStaff, isRider } = useAuth();
+  const { user, isAdmin, isRider } = useAuth();
   const [open, setOpen] = useState(false);
   const pathname = useRouterState({ select: (s) => s.location.pathname });
 
@@ -43,7 +43,7 @@ export function Header() {
               {n.label}
             </Link>
           ))}
-          {isStaff && (
+          {isAdmin && (
             <Link to="/admin" className="rounded-md px-3 py-2 text-sm font-medium text-accent hover:text-accent/80">
               Dashboard
             </Link>
@@ -103,7 +103,7 @@ export function Header() {
               {n.label}
             </Link>
           ))}
-          {isStaff && (
+          {isAdmin && (
             <Link to="/admin" onClick={() => setOpen(false)} className="block rounded-md px-3 py-2.5 text-sm font-medium text-accent hover:bg-secondary">
               Dashboard
             </Link>
