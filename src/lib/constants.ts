@@ -71,7 +71,6 @@ export function mapsNavLink(opts: {
 
 export const ROLE_LABELS: Record<string, string> = {
   admin: "Admin",
-  staff: "Staff",
   rider: "Rider",
   customer: "Customer",
 };

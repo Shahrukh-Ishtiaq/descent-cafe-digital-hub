@@ -22,7 +22,6 @@ interface AuthContextValue {
   profile: Profile | null;
   roles: string[];
   isAdmin: boolean;
-  isStaff: boolean;
   isRider: boolean;
   loading: boolean;
   signOut: () => Promise<void>;
@@ -73,7 +72,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     profile,
     roles,
     isAdmin: roles.includes("admin"),
-    isStaff: roles.includes("admin") || roles.includes("staff"),
     isRider: roles.includes("rider"),
     loading,
     signOut: async () => {

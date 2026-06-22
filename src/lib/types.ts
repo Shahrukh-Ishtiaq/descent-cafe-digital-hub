@@ -64,4 +64,4 @@ export interface Profile {
   created_at?: string;
 }
 
-export type AppRole = "admin" | "staff" | "rider" | "customer";
+export type AppRole = "admin" | "rider" | "customer";
