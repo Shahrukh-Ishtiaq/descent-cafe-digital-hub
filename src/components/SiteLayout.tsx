@@ -6,11 +6,11 @@ import { WhatsAppButton } from "./WhatsAppButton";
 import { useAuth } from "@/lib/auth";
 
 export function SiteLayout({ children }: { children: ReactNode }) {
-  const { isRider, isStaff, loading } = useAuth();
+  const { isRider, isAdmin, loading } = useAuth();
   const navigate = useNavigate();
 
   // Riders get a dedicated delivery-only app — keep them out of the customer site.
-  const riderOnly = !loading && isRider && !isStaff;
+  const riderOnly = !loading && isRider && !isAdmin;
   useEffect(() => {
     if (riderOnly) navigate({ to: "/rider", replace: true });
   }, [riderOnly, navigate]);

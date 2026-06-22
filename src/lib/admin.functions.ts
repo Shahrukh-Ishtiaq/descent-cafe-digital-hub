@@ -122,7 +122,7 @@ export const setUserRole = createServerFn({ method: "POST" })
   .inputValidator(
     (d: {
       email: string;
-      role: "admin" | "staff" | "rider" | "customer";
+      role: "admin" | "rider" | "customer";
       action: "add" | "remove";
     }) => {
       if (!d?.email || !d?.role || !d?.action) throw new Error("Invalid input.");
@@ -168,8 +168,8 @@ export const setUserRole = createServerFn({ method: "POST" })
     return { ok: true, userId: target.id };
   });
 
-// Admin-only: create a brand new staff or rider account.
-export const createStaffUser = createServerFn({ method: "POST" })
+// Admin-only: create a brand new rider account with name, phone, email & password.
+export const createRider = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator(
     (d: {
@@ -177,17 +177,15 @@ export const createStaffUser = createServerFn({ method: "POST" })
       password: string;
       full_name: string;
       phone?: string;
-      role: "staff" | "rider";
     }) => {
-      if (!d?.email || !d?.password || d.password.length < 6 || !d?.role) {
-        throw new Error("Email, 6+ char password and role are required.");
+      if (!d?.email || !d?.password || d.password.length < 6) {
+        throw new Error("Email and a 6+ character password are required.");
       }
       return {
         email: d.email.trim().toLowerCase(),
         password: d.password,
         full_name: (d.full_name || "").trim(),
         phone: (d.phone || "").trim(),
-        role: d.role,
       };
     },
   )
@@ -213,9 +211,17 @@ export const createStaffUser = createServerFn({ method: "POST" })
     if (error) throw new Error(error.message);
     const userId = created.user.id;
 
+    // Make sure the rider's profile carries their name & phone for dashboards.
+    await admin
+      .from("profiles")
+      .upsert(
+        { id: userId, full_name: data.full_name, phone: data.phone },
+        { onConflict: "id" },
+      );
+
     await admin
       .from("user_roles")
-      .upsert({ user_id: userId, role: data.role }, { onConflict: "user_id,role" });
+      .upsert({ user_id: userId, role: "rider" }, { onConflict: "user_id,role" });
     // Remove the default customer role so the dashboard role is unambiguous.
     await admin
       .from("user_roles")
@@ -223,4 +229,42 @@ export const createStaffUser = createServerFn({ method: "POST" })
       .eq("user_id", userId)
       .eq("role", "customer");
     return { ok: true, userId };
+  });
+
+// Public: resolve a Pakistani phone number to the account email so customers
+// can sign in with either their email or phone. Returns null when no match,
+// so it never reveals whether a given email exists.
+export const resolveLoginEmail = createServerFn({ method: "POST" })
+  .inputValidator((d: { phone: string }) => {
+    const raw = (d?.phone || "").replace(/[\s-]/g, "");
+    if (!raw) throw new Error("Phone number is required.");
+    return { phone: raw };
+  })
+  .handler(async ({ data }) => {
+    // Normalise to the local 03XXXXXXXXX form for matching.
+    let local = data.phone;
+    if (local.startsWith("+92")) local = "0" + local.slice(3);
+    else if (local.startsWith("92")) local = "0" + local.slice(2);
+    const digits = local.replace(/\D/g, "");
+    if (!/^03\d{9}$/.test(digits)) return { email: null as string | null };
+
+    const { supabaseAdmin } = await import(
+      "@/integrations/supabase/client.server"
+    );
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const admin = supabaseAdmin as any;
+
+    // Match against the stored profile phone, ignoring spaces/dashes.
+    const { data: profs } = await admin
+      .from("profiles")
+      .select("id, phone");
+    const match = (profs ?? []).find((p: { phone: string | null }) => {
+      const pd = (p.phone || "").replace(/\D/g, "");
+      const norm = pd.startsWith("92") ? "0" + pd.slice(2) : pd;
+      return norm === digits;
+    });
+    if (!match) return { email: null as string | null };
+
+    const { data: u } = await admin.auth.admin.getUserById(match.id);
+    return { email: (u?.user?.email as string | undefined) ?? null };
   });

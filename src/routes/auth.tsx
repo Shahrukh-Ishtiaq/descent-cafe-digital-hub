@@ -5,7 +5,8 @@ import { Eye, EyeOff } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { lovable } from "@/integrations/lovable/index";
 import { useAuth } from "@/lib/auth";
-import { ensurePrimaryAdmin } from "@/lib/admin.functions";
+import { ensurePrimaryAdmin, resolveLoginEmail } from "@/lib/admin.functions";
+import { useServerFn } from "@tanstack/react-start";
 import { SiteLayout } from "@/components/SiteLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -20,21 +21,27 @@ export const Route = createFileRoute("/auth")({
 function AuthPage() {
   const [mode, setMode] = useState<"login" | "register" | "forgot">("login");
   const [email, setEmail] = useState("");
+  const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
-  const { user, roles, isRider, isStaff, refreshProfile } = useAuth();
+  const { user, roles, isRider, isAdmin, refreshProfile } = useAuth();
+  const resolvePhone = useServerFn(resolveLoginEmail);
 
   useEffect(() => {
     if (!user) return;
-    // Send each role to the right home: riders to deliveries, staff to admin.
-    if (isRider && !isStaff) navigate({ to: "/rider", replace: true });
-    else if (isStaff) navigate({ to: "/admin", replace: true });
+    // Send each role to the right home: riders to deliveries, admins to dashboard.
+    if (isRider && !isAdmin) navigate({ to: "/rider", replace: true });
+    else if (isAdmin) navigate({ to: "/admin", replace: true });
     else navigate({ to: "/menu", replace: true });
-  }, [user, roles, isRider, isStaff, navigate]);
+  }, [user, roles, isRider, isAdmin, navigate]);
+
+  // A login identifier can be an email or a Pakistani phone number.
+  const looksLikePhone = (v: string) =>
+    /^(\+?92|0)\d[\d\s-]{8,}$/.test(v.trim());
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -50,7 +57,7 @@ function AuthPage() {
         return;
       }
       if (mode === "register") {
-        const { error } = await supabase.auth.signUp({
+        const { data, error } = await supabase.auth.signUp({
           email,
           password,
           options: {
@@ -59,9 +66,30 @@ function AuthPage() {
           },
         });
         if (error) throw error;
+        // Supabase returns a user with no identities when the email already
+        // exists (and confirmations are off) — surface a clear message.
+        if (data.user && (data.user.identities?.length ?? 0) === 0) {
+          toast.error("That email is already registered. Try signing in instead.");
+          setMode("login");
+          return;
+        }
         toast.success("Account created! You're signed in.");
       } else {
-        const { error } = await supabase.auth.signInWithPassword({ email, password });
+        // Allow signing in with either an email or a Pakistani phone number.
+        let loginEmail = identifier.trim();
+        if (looksLikePhone(loginEmail)) {
+          const res = await resolvePhone({ data: { phone: loginEmail } });
+          if (!res?.email) {
+            throw new Error(
+              "No account found for that phone number. Try your email instead.",
+            );
+          }
+          loginEmail = res.email;
+        }
+        const { error } = await supabase.auth.signInWithPassword({
+          email: loginEmail,
+          password,
+        });
         if (error) throw error;
         toast.success("Welcome back!");
       }
@@ -135,10 +163,25 @@ function AuthPage() {
                 </div>
               </>
             )}
-            <div className="space-y-1.5">
-              <Label htmlFor="email">Email</Label>
-              <Input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
-            </div>
+            {mode === "login" ? (
+              <div className="space-y-1.5">
+                <Label htmlFor="identifier">Email or phone</Label>
+                <Input
+                  id="identifier"
+                  type="text"
+                  value={identifier}
+                  onChange={(e) => setIdentifier(e.target.value)}
+                  required
+                  placeholder="you@email.com or 03xx-xxxxxxx"
+                  autoComplete="username"
+                />
+              </div>
+            ) : (
+              <div className="space-y-1.5">
+                <Label htmlFor="email">Email</Label>
+                <Input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
+              </div>
+            )}
             {mode !== "forgot" && (
             <div className="space-y-1.5">
               <Label htmlFor="password">Password</Label>

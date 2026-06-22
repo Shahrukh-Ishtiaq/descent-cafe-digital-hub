@@ -1,5 +1,6 @@
 import { Plus } from "lucide-react";
 import { toast } from "sonner";
+import { useNavigate } from "@tanstack/react-router";
 import type { Product } from "@/lib/types";
 import { formatPrice } from "@/lib/constants";
 import { categoryImage } from "@/lib/categories";
@@ -8,6 +9,7 @@ import { Button } from "@/components/ui/button";
 
 export function ProductCard({ product }: { product: Product }) {
   const { add } = useCart();
+  const navigate = useNavigate();
   const img = categoryImage(product.category, product.image_url);
   const soldOut = !product.is_available || product.stock_quantity <= 0;
   const lowStock = !soldOut && product.stock_quantity <= 5;
@@ -48,6 +50,7 @@ export function ProductCard({ product }: { product: Product }) {
           onClick={() => {
             add({ id: product.id, name: product.name, price: product.price, image: img });
             toast.success(`${product.name} added to cart`);
+            navigate({ to: "/cart" });
           }}
         >
           <Plus /> {soldOut ? "Sold out" : "Add to cart"}

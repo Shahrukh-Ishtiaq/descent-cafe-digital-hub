@@ -40,7 +40,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAuth } from "@/lib/auth";
 import { sb } from "@/lib/db";
-import { claimAdmin, setUserRole, createStaffUser } from "@/lib/admin.functions";
+import { claimAdmin, setUserRole, createRider } from "@/lib/admin.functions";
 import {
   formatPrice,
   CATEGORIES,
@@ -75,18 +75,18 @@ async function uploadProductImage(file: File): Promise<string> {
 }
 
 function AdminPage() {
-  const { isStaff, isAdmin, refreshProfile } = useAuth();
+  const { isAdmin, refreshProfile } = useAuth();
   const claim = useServerFn(claimAdmin);
 
-  if (!isStaff) {
+  if (!isAdmin) {
     return (
       <SiteLayout>
         <div className="mx-auto max-w-md px-4 py-24 text-center">
           <h1 className="font-display text-2xl font-bold text-foreground">
-            Staff access only
+            Admin access only
           </h1>
           <p className="mt-2 text-muted-foreground">
-            This area is for Descent Cafe staff. If you’re the owner setting up
+            This area is for Descent Cafe admins. If you’re the owner setting up
             for the first time, claim admin access below.
           </p>
           <Button
@@ -189,6 +189,7 @@ function AdminPage() {
 function OrdersTab() {
   const qc = useQueryClient();
   const [soundOn, setSoundOn] = useState(true);
+  const [search, setSearch] = useState("");
 
   const { data: orders = [], isLoading } = useQuery({
     queryKey: ["admin-orders"],
@@ -245,6 +246,17 @@ function OrdersTab() {
   const pendingCount = orders.filter((o) => o.status === "pending").length;
   useRepeatingAlarm(pendingCount > 0, "admin", soundOn);
 
+  const q = search.trim().toLowerCase();
+  const visibleOrders = q
+    ? orders.filter(
+        (o) =>
+          o.customer_name.toLowerCase().includes(q) ||
+          o.phone.toLowerCase().includes(q) ||
+          o.id.toLowerCase().includes(q) ||
+          (o.address || "").toLowerCase().includes(q),
+      )
+    : orders;
+
   const updateStatus = async (id: string, status: string) => {
     const { error } = await sb.from("orders").update({ status }).eq("id", id);
     if (error) toast.error("Update failed");
@@ -290,15 +302,21 @@ function OrdersTab() {
           {soundOn ? "Alerts on" : "Alerts off"}
         </Button>
       </div>
+      <Input
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+        placeholder="Search by name, phone, address or order number…"
+        className="mb-4 h-9"
+      />
       {isLoading ? (
         <p className="py-12 text-center text-muted-foreground">
           Loading orders…
         </p>
-      ) : orders.length === 0 ? (
+      ) : visibleOrders.length === 0 ? (
         <p className="py-12 text-center text-muted-foreground">No orders yet.</p>
       ) : (
         <div className="space-y-4">
-          {orders.map((o) => (
+          {visibleOrders.map((o) => (
             <div
               key={o.id}
               className="rounded-2xl border border-border bg-card p-5 shadow-card"
@@ -1143,27 +1161,69 @@ function PromotionsTab() {
 
 /* ----------------------------- Customers ----------------------------- */
 function CustomersTab() {
+  const [search, setSearch] = useState("");
   const { data: customers = [], isLoading } = useQuery({
     queryKey: ["admin-customers"],
-    queryFn: async (): Promise<(Profile & { orders: number })[]> => {
+    queryFn: async (): Promise<
+      (Profile & { orders: number; lastOrder: string | null; spent: number })[]
+    > => {
       const { data: profs } = await sb
         .from("profiles")
         .select("*")
         .order("created_at", { ascending: false });
-      const { data: orderRows } = await sb.from("orders").select("user_id");
+      const { data: orderRows } = await sb
+        .from("orders")
+        .select("user_id, total, status, created_at");
       const counts: Record<string, number> = {};
-      (orderRows ?? []).forEach((o: { user_id: string | null }) => {
-        if (o.user_id) counts[o.user_id] = (counts[o.user_id] || 0) + 1;
-      });
+      const last: Record<string, string> = {};
+      const spent: Record<string, number> = {};
+      (orderRows ?? []).forEach(
+        (o: {
+          user_id: string | null;
+          total: number;
+          status: string;
+          created_at: string;
+        }) => {
+          if (!o.user_id) return;
+          counts[o.user_id] = (counts[o.user_id] || 0) + 1;
+          if (!last[o.user_id] || o.created_at > last[o.user_id])
+            last[o.user_id] = o.created_at;
+          if (o.status === "delivered")
+            spent[o.user_id] = (spent[o.user_id] || 0) + Number(o.total);
+        },
+      );
       return ((profs ?? []) as Profile[]).map((p) => ({
         ...p,
         orders: counts[p.id] || 0,
+        lastOrder: last[p.id] || null,
+        spent: spent[p.id] || 0,
       }));
     },
   });
 
+  const q = search.trim().toLowerCase();
+  const filtered = q
+    ? customers.filter(
+        (c) =>
+          (c.full_name || "").toLowerCase().includes(q) ||
+          (c.phone || "").toLowerCase().includes(q) ||
+          (c.address || "").toLowerCase().includes(q),
+      )
+    : customers;
+
   return (
     <div className="mt-4">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <p className="text-sm text-muted-foreground">
+          {customers.length} customer(s) · {filtered.length} shown
+        </p>
+        <Input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search by name, phone or address…"
+          className="h-9 w-full sm:w-72"
+        />
+      </div>
       {isLoading ? (
         <p className="py-12 text-center text-muted-foreground">Loading…</p>
       ) : (
@@ -1175,10 +1235,12 @@ function CustomersTab() {
                 <th className="p-3 font-medium">Phone</th>
                 <th className="p-3 font-medium">Address</th>
                 <th className="p-3 font-medium">Orders</th>
+                <th className="p-3 font-medium">Spent</th>
+                <th className="p-3 font-medium">Last order</th>
               </tr>
             </thead>
             <tbody>
-              {customers.map((c) => (
+              {filtered.map((c) => (
                 <tr key={c.id} className="border-b border-border/60">
                   <td className="p-3 font-medium text-foreground">
                     {c.full_name || "—"}
@@ -1188,6 +1250,14 @@ function CustomersTab() {
                     {c.address || "—"}
                   </td>
                   <td className="p-3 text-accent">{c.orders}</td>
+                  <td className="p-3 text-muted-foreground">
+                    {formatPrice(c.spent)}
+                  </td>
+                  <td className="p-3 text-muted-foreground">
+                    {c.lastOrder
+                      ? new Date(c.lastOrder).toLocaleDateString()
+                      : "—"}
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -1202,18 +1272,17 @@ function CustomersTab() {
 function TeamTab() {
   const qc = useQueryClient();
   const setRole = useServerFn(setUserRole);
-  const createUser = useServerFn(createStaffUser);
+  const createUser = useServerFn(createRider);
 
   const [roleForm, setRoleForm] = useState({
     email: "",
-    role: "rider" as "admin" | "staff" | "rider" | "customer",
+    role: "rider" as "admin" | "rider" | "customer",
   });
   const [newUser, setNewUser] = useState({
     email: "",
     password: "",
     full_name: "",
     phone: "",
-    role: "rider" as "staff" | "rider",
   });
   const [busy, setBusy] = useState(false);
 
@@ -1223,7 +1292,7 @@ function TeamTab() {
       const { data: roleRows } = await sb
         .from("user_roles")
         .select("user_id, role")
-        .in("role", ["admin", "staff", "rider"]);
+        .in("role", ["admin", "rider"]);
       const ids = [
         ...new Set((roleRows ?? []).map((r: { user_id: string }) => r.user_id)),
       ];
@@ -1270,13 +1339,12 @@ function TeamTab() {
     setBusy(true);
     try {
       await createUser({ data: newUser });
-      toast.success(`${ROLE_LABELS[newUser.role]} account created`);
+      toast.success("Rider account created");
       setNewUser({
         email: "",
         password: "",
         full_name: "",
         phone: "",
-        role: "rider",
       });
       refresh();
     } catch (err) {
@@ -1294,8 +1362,12 @@ function TeamTab() {
           className="space-y-3 rounded-2xl border border-border bg-card p-5 shadow-card"
         >
           <h3 className="font-display text-lg font-bold text-foreground">
-            Create staff / rider account
+            Create Rider Account
           </h3>
+          <p className="text-xs text-muted-foreground">
+            Riders sign in with these credentials and only see their assigned
+            deliveries.
+          </p>
           <Input
             placeholder="Full name"
             value={newUser.full_name}
@@ -1305,9 +1377,10 @@ function TeamTab() {
             required
           />
           <Input
-            placeholder="Phone"
+            placeholder="Phone (03xx-xxxxxxx)"
             value={newUser.phone}
             onChange={(e) => setNewUser({ ...newUser, phone: e.target.value })}
+            required
           />
           <Input
             type="email"
@@ -1326,22 +1399,8 @@ function TeamTab() {
             required
             minLength={6}
           />
-          <Select
-            value={newUser.role}
-            onValueChange={(v) =>
-              setNewUser({ ...newUser, role: v as "staff" | "rider" })
-            }
-          >
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="rider">Rider</SelectItem>
-              <SelectItem value="staff">Staff</SelectItem>
-            </SelectContent>
-          </Select>
           <Button type="submit" className="w-full" disabled={busy}>
-            <Plus /> Create account
+            <Plus /> Create Rider Account
           </Button>
         </form>
 
@@ -1371,7 +1430,6 @@ function TeamTab() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="admin">Admin</SelectItem>
-              <SelectItem value="staff">Staff</SelectItem>
               <SelectItem value="rider">Rider</SelectItem>
               <SelectItem value="customer">Customer</SelectItem>
             </SelectContent>
