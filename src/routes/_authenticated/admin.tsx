@@ -1143,27 +1143,69 @@ function PromotionsTab() {
 
 /* ----------------------------- Customers ----------------------------- */
 function CustomersTab() {
+  const [search, setSearch] = useState("");
   const { data: customers = [], isLoading } = useQuery({
     queryKey: ["admin-customers"],
-    queryFn: async (): Promise<(Profile & { orders: number })[]> => {
+    queryFn: async (): Promise<
+      (Profile & { orders: number; lastOrder: string | null; spent: number })[]
+    > => {
       const { data: profs } = await sb
         .from("profiles")
         .select("*")
         .order("created_at", { ascending: false });
-      const { data: orderRows } = await sb.from("orders").select("user_id");
+      const { data: orderRows } = await sb
+        .from("orders")
+        .select("user_id, total, status, created_at");
       const counts: Record<string, number> = {};
-      (orderRows ?? []).forEach((o: { user_id: string | null }) => {
-        if (o.user_id) counts[o.user_id] = (counts[o.user_id] || 0) + 1;
-      });
+      const last: Record<string, string> = {};
+      const spent: Record<string, number> = {};
+      (orderRows ?? []).forEach(
+        (o: {
+          user_id: string | null;
+          total: number;
+          status: string;
+          created_at: string;
+        }) => {
+          if (!o.user_id) return;
+          counts[o.user_id] = (counts[o.user_id] || 0) + 1;
+          if (!last[o.user_id] || o.created_at > last[o.user_id])
+            last[o.user_id] = o.created_at;
+          if (o.status === "delivered")
+            spent[o.user_id] = (spent[o.user_id] || 0) + Number(o.total);
+        },
+      );
       return ((profs ?? []) as Profile[]).map((p) => ({
         ...p,
         orders: counts[p.id] || 0,
+        lastOrder: last[p.id] || null,
+        spent: spent[p.id] || 0,
       }));
     },
   });
 
+  const q = search.trim().toLowerCase();
+  const filtered = q
+    ? customers.filter(
+        (c) =>
+          (c.full_name || "").toLowerCase().includes(q) ||
+          (c.phone || "").toLowerCase().includes(q) ||
+          (c.address || "").toLowerCase().includes(q),
+      )
+    : customers;
+
   return (
     <div className="mt-4">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <p className="text-sm text-muted-foreground">
+          {customers.length} customer(s) · {filtered.length} shown
+        </p>
+        <Input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search by name, phone or address…"
+          className="h-9 w-full sm:w-72"
+        />
+      </div>
       {isLoading ? (
         <p className="py-12 text-center text-muted-foreground">Loading…</p>
       ) : (
@@ -1175,10 +1217,12 @@ function CustomersTab() {
                 <th className="p-3 font-medium">Phone</th>
                 <th className="p-3 font-medium">Address</th>
                 <th className="p-3 font-medium">Orders</th>
+                <th className="p-3 font-medium">Spent</th>
+                <th className="p-3 font-medium">Last order</th>
               </tr>
             </thead>
             <tbody>
-              {customers.map((c) => (
+              {filtered.map((c) => (
                 <tr key={c.id} className="border-b border-border/60">
                   <td className="p-3 font-medium text-foreground">
                     {c.full_name || "—"}
@@ -1188,6 +1232,14 @@ function CustomersTab() {
                     {c.address || "—"}
                   </td>
                   <td className="p-3 text-accent">{c.orders}</td>
+                  <td className="p-3 text-muted-foreground">
+                    {formatPrice(c.spent)}
+                  </td>
+                  <td className="p-3 text-muted-foreground">
+                    {c.lastOrder
+                      ? new Date(c.lastOrder).toLocaleDateString()
+                      : "—"}
+                  </td>
                 </tr>
               ))}
             </tbody>
