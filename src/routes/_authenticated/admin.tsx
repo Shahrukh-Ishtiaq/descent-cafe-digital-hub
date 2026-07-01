@@ -1449,10 +1449,11 @@ function TeamTab() {
             >
               <div>
                 <p className="font-medium text-foreground">
-                  {t.profile?.full_name || t.id.slice(0, 8)}
+                  {t.full_name || t.email || t.id.slice(0, 8)}
                 </p>
                 <p className="text-xs text-muted-foreground">
-                  {t.profile?.phone || "—"}
+                  {t.email || "—"}
+                  {t.phone ? ` · ${t.phone}` : ""}
                 </p>
               </div>
               <div className="flex flex-wrap gap-1">
