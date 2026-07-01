@@ -292,7 +292,7 @@ function OrdersTab() {
           size="sm"
           onClick={() => {
             primeAlarm();
-            setSoundOn((v) => !v);
+            setAdminAlarmOn(!soundOn);
           }}
         >
           {soundOn ? <Bell /> : <BellOff />}{" "}
