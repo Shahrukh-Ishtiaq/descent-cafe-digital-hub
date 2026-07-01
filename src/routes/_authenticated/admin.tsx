@@ -58,7 +58,6 @@ import type { Order, Product, Promotion, Profile } from "@/lib/types";
 import { useCategories, type Category } from "@/lib/categories";
 import { cn } from "@/lib/utils";
 import {
-  useRepeatingAlarm,
   primeAlarm,
   useAdminAlarmOn,
   setAdminAlarmOn,
