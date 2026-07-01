@@ -376,7 +376,8 @@ function OrdersTab() {
                       <SelectItem value="none">No rider</SelectItem>
                       {riders.map((r) => (
                         <SelectItem key={r.id} value={r.id}>
-                          {r.full_name || r.id.slice(0, 8)}
+                          {r.full_name || r.email || r.id.slice(0, 8)}
+                          {r.phone ? ` · ${r.phone}` : ""}
                         </SelectItem>
                       ))}
                     </SelectContent>
