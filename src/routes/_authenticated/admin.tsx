@@ -199,8 +199,9 @@ function AdminPage() {
 /* ----------------------------- Orders ----------------------------- */
 function OrdersTab() {
   const qc = useQueryClient();
-  const [soundOn, setSoundOn] = useState(true);
+  const soundOn = useAdminAlarmOn();
   const [search, setSearch] = useState("");
+  const fetchTeam = useServerFn(listTeam);
 
   const { data: orders = [], isLoading } = useQuery({
     queryKey: ["admin-orders"],
@@ -214,37 +215,24 @@ function OrdersTab() {
     },
   });
 
+  // Riders for the assignment dropdown — pulled via a server function so every
+  // rider shows up (with name/phone/email) even if their profile row is thin.
   const { data: riders = [] } = useQuery({
     queryKey: ["riders"],
-    queryFn: async () => {
-      const { data: roleRows } = await sb
-        .from("user_roles")
-        .select("user_id")
-        .eq("role", "rider");
-      const ids = (roleRows ?? []).map((r: { user_id: string }) => r.user_id);
-      if (ids.length === 0) return [] as Profile[];
-      const { data: profs } = await sb
-        .from("profiles")
-        .select("id, full_name, phone")
-        .in("id", ids);
-      return (profs ?? []) as Profile[];
+    queryFn: async (): Promise<TeamMember[]> => {
+      const { team } = await fetchTeam({});
+      return team.filter((t) => t.roles.includes("rider"));
     },
   });
 
+  // New orders arriving in realtime are handled globally by <AdminOrderAlarm/>
+  // (rings on any page). Here we just keep the visible list fresh.
   useEffect(() => {
     const channel = supabase
-      .channel("admin-orders-rt")
+      .channel("admin-orders-list-rt")
       .on(
         "postgres_changes",
-        { event: "INSERT", schema: "public", table: "orders" },
-        () => {
-          toast.success("🔔 New order received!");
-          qc.invalidateQueries({ queryKey: ["admin-orders"] });
-        },
-      )
-      .on(
-        "postgres_changes",
-        { event: "UPDATE", schema: "public", table: "orders" },
+        { event: "*", schema: "public", table: "orders" },
         () => qc.invalidateQueries({ queryKey: ["admin-orders"] }),
       )
       .subscribe();
@@ -253,9 +241,7 @@ function OrdersTab() {
     };
   }, [qc]);
 
-  // Keep ringing until every new order is acknowledged (moved off "pending").
   const pendingCount = orders.filter((o) => o.status === "pending").length;
-  useRepeatingAlarm(pendingCount > 0, "admin", soundOn);
 
   const q = search.trim().toLowerCase();
   const visibleOrders = q
