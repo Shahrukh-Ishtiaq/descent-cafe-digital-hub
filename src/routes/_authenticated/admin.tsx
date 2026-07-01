@@ -1271,6 +1271,7 @@ function TeamTab() {
   const qc = useQueryClient();
   const setRole = useServerFn(setUserRole);
   const createUser = useServerFn(createRider);
+  const fetchTeam = useServerFn(listTeam);
 
   const [roleForm, setRoleForm] = useState({
     email: "",
@@ -1286,28 +1287,9 @@ function TeamTab() {
 
   const { data: team = [] } = useQuery({
     queryKey: ["admin-team"],
-    queryFn: async () => {
-      const { data: roleRows } = await sb
-        .from("user_roles")
-        .select("user_id, role")
-        .in("role", ["admin", "rider"]);
-      const ids = [
-        ...new Set((roleRows ?? []).map((r: { user_id: string }) => r.user_id)),
-      ];
-      const { data: profs } = ids.length
-        ? await sb.from("profiles").select("id, full_name, phone").in("id", ids)
-        : { data: [] };
-      const map: Record<string, Profile> = {};
-      (profs ?? []).forEach((p: Profile) => (map[p.id] = p));
-      const grouped: Record<string, { profile?: Profile; roles: string[] }> = {};
-      (roleRows ?? []).forEach((r: { user_id: string; role: string }) => {
-        grouped[r.user_id] = grouped[r.user_id] || {
-          profile: map[r.user_id],
-          roles: [],
-        };
-        grouped[r.user_id].roles.push(r.role);
-      });
-      return Object.entries(grouped).map(([id, v]) => ({ id, ...v }));
+    queryFn: async (): Promise<TeamMember[]> => {
+      const { team } = await fetchTeam({});
+      return team;
     },
   });
 
