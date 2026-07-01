@@ -1,6 +1,6 @@
 // Urgent, repeating order-alert sound (Web Audio). Distinct from a single
 // notification ding — a fast triple-beep that repeats until acknowledged.
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useSyncExternalStore } from "react";
 
 let ctx: AudioContext | null = null;
 
@@ -68,4 +68,25 @@ export function useRepeatingAlarm(
     }
     return clear;
   }, [active, enabled, variant]);
+}
+
+// Shared on/off switch for the admin new-order alarm so the toggle on the
+// dashboard and the always-on background watcher stay in sync.
+let _adminAlarmOn = true;
+const _adminAlarmSubs = new Set<() => void>();
+
+export function setAdminAlarmOn(v: boolean) {
+  _adminAlarmOn = v;
+  _adminAlarmSubs.forEach((f) => f());
+}
+
+export function useAdminAlarmOn(): boolean {
+  return useSyncExternalStore(
+    (cb) => {
+      _adminAlarmSubs.add(cb);
+      return () => _adminAlarmSubs.delete(cb);
+    },
+    () => _adminAlarmOn,
+    () => true,
+  );
 }
