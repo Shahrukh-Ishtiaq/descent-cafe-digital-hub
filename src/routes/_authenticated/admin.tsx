@@ -40,7 +40,13 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAuth } from "@/lib/auth";
 import { sb } from "@/lib/db";
-import { claimAdmin, setUserRole, createRider } from "@/lib/admin.functions";
+import {
+  claimAdmin,
+  setUserRole,
+  createRider,
+  listTeam,
+  type TeamMember,
+} from "@/lib/admin.functions";
 import {
   formatPrice,
   CATEGORIES,
@@ -51,7 +57,11 @@ import {
 import type { Order, Product, Promotion, Profile } from "@/lib/types";
 import { useCategories, type Category } from "@/lib/categories";
 import { cn } from "@/lib/utils";
-import { useRepeatingAlarm, primeAlarm } from "@/lib/alarm";
+import {
+  primeAlarm,
+  useAdminAlarmOn,
+  setAdminAlarmOn,
+} from "@/lib/alarm";
 
 export const Route = createFileRoute("/_authenticated/admin")({
   head: () => ({ meta: [{ title: "Admin Dashboard — Descent Cafe" }] }),
@@ -188,8 +198,9 @@ function AdminPage() {
 /* ----------------------------- Orders ----------------------------- */
 function OrdersTab() {
   const qc = useQueryClient();
-  const [soundOn, setSoundOn] = useState(true);
+  const soundOn = useAdminAlarmOn();
   const [search, setSearch] = useState("");
+  const fetchTeam = useServerFn(listTeam);
 
   const { data: orders = [], isLoading } = useQuery({
     queryKey: ["admin-orders"],
@@ -203,37 +214,24 @@ function OrdersTab() {
     },
   });
 
+  // Riders for the assignment dropdown — pulled via a server function so every
+  // rider shows up (with name/phone/email) even if their profile row is thin.
   const { data: riders = [] } = useQuery({
     queryKey: ["riders"],
-    queryFn: async () => {
-      const { data: roleRows } = await sb
-        .from("user_roles")
-        .select("user_id")
-        .eq("role", "rider");
-      const ids = (roleRows ?? []).map((r: { user_id: string }) => r.user_id);
-      if (ids.length === 0) return [] as Profile[];
-      const { data: profs } = await sb
-        .from("profiles")
-        .select("id, full_name, phone")
-        .in("id", ids);
-      return (profs ?? []) as Profile[];
+    queryFn: async (): Promise<TeamMember[]> => {
+      const { team } = await fetchTeam({});
+      return team.filter((t) => t.roles.includes("rider"));
     },
   });
 
+  // New orders arriving in realtime are handled globally by <AdminOrderAlarm/>
+  // (rings on any page). Here we just keep the visible list fresh.
   useEffect(() => {
     const channel = supabase
-      .channel("admin-orders-rt")
+      .channel("admin-orders-list-rt")
       .on(
         "postgres_changes",
-        { event: "INSERT", schema: "public", table: "orders" },
-        () => {
-          toast.success("🔔 New order received!");
-          qc.invalidateQueries({ queryKey: ["admin-orders"] });
-        },
-      )
-      .on(
-        "postgres_changes",
-        { event: "UPDATE", schema: "public", table: "orders" },
+        { event: "*", schema: "public", table: "orders" },
         () => qc.invalidateQueries({ queryKey: ["admin-orders"] }),
       )
       .subscribe();
@@ -242,9 +240,7 @@ function OrdersTab() {
     };
   }, [qc]);
 
-  // Keep ringing until every new order is acknowledged (moved off "pending").
   const pendingCount = orders.filter((o) => o.status === "pending").length;
-  useRepeatingAlarm(pendingCount > 0, "admin", soundOn);
 
   const q = search.trim().toLowerCase();
   const visibleOrders = q
@@ -295,7 +291,7 @@ function OrdersTab() {
           size="sm"
           onClick={() => {
             primeAlarm();
-            setSoundOn((v) => !v);
+            setAdminAlarmOn(!soundOn);
           }}
         >
           {soundOn ? <Bell /> : <BellOff />}{" "}
@@ -379,7 +375,8 @@ function OrdersTab() {
                       <SelectItem value="none">No rider</SelectItem>
                       {riders.map((r) => (
                         <SelectItem key={r.id} value={r.id}>
-                          {r.full_name || r.id.slice(0, 8)}
+                          {r.full_name || r.email || r.id.slice(0, 8)}
+                          {r.phone ? ` · ${r.phone}` : ""}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -1273,6 +1270,7 @@ function TeamTab() {
   const qc = useQueryClient();
   const setRole = useServerFn(setUserRole);
   const createUser = useServerFn(createRider);
+  const fetchTeam = useServerFn(listTeam);
 
   const [roleForm, setRoleForm] = useState({
     email: "",
@@ -1288,28 +1286,9 @@ function TeamTab() {
 
   const { data: team = [] } = useQuery({
     queryKey: ["admin-team"],
-    queryFn: async () => {
-      const { data: roleRows } = await sb
-        .from("user_roles")
-        .select("user_id, role")
-        .in("role", ["admin", "rider"]);
-      const ids = [
-        ...new Set((roleRows ?? []).map((r: { user_id: string }) => r.user_id)),
-      ];
-      const { data: profs } = ids.length
-        ? await sb.from("profiles").select("id, full_name, phone").in("id", ids)
-        : { data: [] };
-      const map: Record<string, Profile> = {};
-      (profs ?? []).forEach((p: Profile) => (map[p.id] = p));
-      const grouped: Record<string, { profile?: Profile; roles: string[] }> = {};
-      (roleRows ?? []).forEach((r: { user_id: string; role: string }) => {
-        grouped[r.user_id] = grouped[r.user_id] || {
-          profile: map[r.user_id],
-          roles: [],
-        };
-        grouped[r.user_id].roles.push(r.role);
-      });
-      return Object.entries(grouped).map(([id, v]) => ({ id, ...v }));
+    queryFn: async (): Promise<TeamMember[]> => {
+      const { team } = await fetchTeam({});
+      return team;
     },
   });
 
@@ -1469,10 +1448,11 @@ function TeamTab() {
             >
               <div>
                 <p className="font-medium text-foreground">
-                  {t.profile?.full_name || t.id.slice(0, 8)}
+                  {t.full_name || t.email || t.id.slice(0, 8)}
                 </p>
                 <p className="text-xs text-muted-foreground">
-                  {t.profile?.phone || "—"}
+                  {t.email || "—"}
+                  {t.phone ? ` · ${t.phone}` : ""}
                 </p>
               </div>
               <div className="flex flex-wrap gap-1">

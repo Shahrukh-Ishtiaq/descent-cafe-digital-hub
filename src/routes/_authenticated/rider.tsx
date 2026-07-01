@@ -9,11 +9,15 @@ import {
   Bell,
   BellOff,
   LogOut,
+  KeyRound,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { StatusBadge } from "@/components/StatusBadge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { useAuth } from "@/lib/auth";
 import { sb } from "@/lib/db";
 import { formatPrice, mapsNavLink, CAFE } from "@/lib/constants";
@@ -205,8 +209,96 @@ function RiderPage() {
             ))}
           </>
         )}
+
+        <ChangePassword email={user?.email ?? ""} />
       </div>
     </RiderShell>
+  );
+}
+
+// Lets a rider update their own login password from their dashboard.
+function ChangePassword({ email }: { email: string }) {
+  const [open, setOpen] = useState(false);
+  const [password, setPassword] = useState("");
+  const [confirm, setConfirm] = useState("");
+  const [show, setShow] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (password.length < 6) {
+      toast.error("Password must be at least 6 characters.");
+      return;
+    }
+    if (password !== confirm) {
+      toast.error("Passwords do not match.");
+      return;
+    }
+    setBusy(true);
+    const { error } = await supabase.auth.updateUser({ password });
+    setBusy(false);
+    if (error) {
+      toast.error(error.message || "Could not update password.");
+      return;
+    }
+    toast.success("Password updated. Use it next time you sign in.");
+    setPassword("");
+    setConfirm("");
+    setOpen(false);
+  };
+
+  return (
+    <div className="mt-10 rounded-2xl border border-border bg-card p-5 shadow-card">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="flex w-full items-center justify-between text-left"
+      >
+        <span className="flex items-center gap-2 font-display text-lg font-bold text-foreground">
+          <KeyRound className="size-5 text-accent" /> Change password
+        </span>
+        <span className="text-sm text-muted-foreground">
+          {open ? "Hide" : "Open"}
+        </span>
+      </button>
+      {open && (
+        <form onSubmit={submit} className="mt-4 space-y-3">
+          <div>
+            <label className="text-xs text-muted-foreground">Your email</label>
+            <Input value={email} disabled readOnly className="mt-1" />
+          </div>
+          <div className="relative">
+            <Input
+              type={show ? "text" : "password"}
+              placeholder="New password (6+ chars)"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+              minLength={6}
+            />
+            <button
+              type="button"
+              onClick={() => setShow((v) => !v)}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground"
+              aria-label={show ? "Hide password" : "Show password"}
+            >
+              {show ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+            </button>
+          </div>
+          <Input
+            type={show ? "text" : "password"}
+            placeholder="Confirm new password"
+            value={confirm}
+            onChange={(e) => setConfirm(e.target.value)}
+            required
+            minLength={6}
+          />
+          <Button type="submit" className="w-full" disabled={busy}>
+            {busy ? "Saving…" : "Save password"}
+          </Button>
+        </form>
+      )}
+    </div>
   );
 }
 
