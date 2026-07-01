@@ -235,6 +235,105 @@ export const createRider = createServerFn({ method: "POST" })
 // can sign in with either their email or phone. Returns null when no match,
 // so it never reveals whether a given email exists.
 export const resolveLoginEmail = createServerFn({ method: "POST" })
+
+// Admin-only: list every team member (admins + riders) with their email, name
+// and phone. Reads auth users directly so riders always show up even if their
+// profile row is missing, and backfills any missing profiles on the way.
+export const listTeam = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { data: isAdmin } = await context.supabase.rpc("has_role", {
+      _user_id: context.userId,
+      _role: "admin",
+    });
+    if (!isAdmin) throw new Error("Forbidden");
+
+    const { supabaseAdmin } = await import(
+      "@/integrations/supabase/client.server"
+    );
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const admin = supabaseAdmin as any;
+
+    const { data: roleRows } = await admin
+      .from("user_roles")
+      .select("user_id, role")
+      .in("role", ["admin", "rider"]);
+    const ids = [
+      ...new Set(
+        (roleRows ?? []).map((r: { user_id: string }) => r.user_id),
+      ),
+    ] as string[];
+    if (ids.length === 0) return { team: [] as TeamMember[] };
+
+    const { data: profs } = await admin
+      .from("profiles")
+      .select("id, full_name, phone")
+      .in("id", ids);
+    const pmap: Record<string, { full_name: string | null; phone: string | null }> =
+      {};
+    (profs ?? []).forEach(
+      (p: { id: string; full_name: string | null; phone: string | null }) =>
+        (pmap[p.id] = { full_name: p.full_name, phone: p.phone }),
+    );
+
+    const { data: list } = await admin.auth.admin.listUsers({
+      page: 1,
+      perPage: 1000,
+    });
+    const umap: Record<
+      string,
+      { email?: string; user_metadata?: { full_name?: string; phone?: string } }
+    > = {};
+    (list?.users ?? []).forEach(
+      (u: {
+        id: string;
+        email?: string;
+        user_metadata?: { full_name?: string; phone?: string };
+      }) => (umap[u.id] = u),
+    );
+
+    // Backfill any missing profile rows from auth metadata so the rest of the
+    // app (dropdowns, tracking) can rely on the profiles table.
+    const toBackfill = ids
+      .filter((id) => !pmap[id])
+      .map((id) => ({
+        id,
+        full_name: umap[id]?.user_metadata?.full_name ?? null,
+        phone: umap[id]?.user_metadata?.phone ?? null,
+      }));
+    if (toBackfill.length) {
+      await admin.from("profiles").upsert(toBackfill, { onConflict: "id" });
+      toBackfill.forEach(
+        (p) => (pmap[p.id] = { full_name: p.full_name, phone: p.phone }),
+      );
+    }
+
+    const rolesById: Record<string, string[]> = {};
+    (roleRows ?? []).forEach((r: { user_id: string; role: string }) => {
+      rolesById[r.user_id] = rolesById[r.user_id] || [];
+      rolesById[r.user_id].push(r.role);
+    });
+
+    const team: TeamMember[] = ids.map((id) => ({
+      id,
+      full_name: pmap[id]?.full_name || umap[id]?.user_metadata?.full_name || null,
+      phone: pmap[id]?.phone || umap[id]?.user_metadata?.phone || null,
+      email: umap[id]?.email ?? null,
+      roles: rolesById[id] ?? [],
+    }));
+    return { team };
+  });
+
+export type TeamMember = {
+  id: string;
+  full_name: string | null;
+  phone: string | null;
+  email: string | null;
+  roles: string[];
+};
+
+// (kept below) Public phone → email resolver.
+export const resolveLoginEmailImpl = createServerFn({ method: "POST" })
   .inputValidator((d: { phone: string }) => {
     const raw = (d?.phone || "").replace(/[\s-]/g, "");
     if (!raw) throw new Error("Phone number is required.");
