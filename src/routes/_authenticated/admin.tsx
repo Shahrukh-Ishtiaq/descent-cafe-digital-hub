@@ -40,7 +40,13 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAuth } from "@/lib/auth";
 import { sb } from "@/lib/db";
-import { claimAdmin, setUserRole, createRider } from "@/lib/admin.functions";
+import {
+  claimAdmin,
+  setUserRole,
+  createRider,
+  listTeam,
+  type TeamMember,
+} from "@/lib/admin.functions";
 import {
   formatPrice,
   CATEGORIES,
@@ -51,7 +57,12 @@ import {
 import type { Order, Product, Promotion, Profile } from "@/lib/types";
 import { useCategories, type Category } from "@/lib/categories";
 import { cn } from "@/lib/utils";
-import { useRepeatingAlarm, primeAlarm } from "@/lib/alarm";
+import {
+  useRepeatingAlarm,
+  primeAlarm,
+  useAdminAlarmOn,
+  setAdminAlarmOn,
+} from "@/lib/alarm";
 
 export const Route = createFileRoute("/_authenticated/admin")({
   head: () => ({ meta: [{ title: "Admin Dashboard — Descent Cafe" }] }),
