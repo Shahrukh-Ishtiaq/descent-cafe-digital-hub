@@ -231,11 +231,6 @@ export const createRider = createServerFn({ method: "POST" })
     return { ok: true, userId };
   });
 
-// Public: resolve a Pakistani phone number to the account email so customers
-// can sign in with either their email or phone. Returns null when no match,
-// so it never reveals whether a given email exists.
-export const resolveLoginEmail = createServerFn({ method: "POST" })
-
 // Admin-only: list every team member (admins + riders) with their email, name
 // and phone. Reads auth users directly so riders always show up even if their
 // profile row is missing, and backfills any missing profiles on the way.
@@ -332,8 +327,10 @@ export type TeamMember = {
   roles: string[];
 };
 
-// (kept below) Public phone → email resolver.
-export const resolveLoginEmailImpl = createServerFn({ method: "POST" })
+// Public: resolve a Pakistani phone number to the account email so customers
+// can sign in with either their email or phone. Returns null when no match,
+// so it never reveals whether a given email exists.
+export const resolveLoginEmail = createServerFn({ method: "POST" })
   .inputValidator((d: { phone: string }) => {
     const raw = (d?.phone || "").replace(/[\s-]/g, "");
     if (!raw) throw new Error("Phone number is required.");
