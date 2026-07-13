@@ -4,6 +4,20 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 // The primary owner account that is always granted admin access on sign-in.
 const PRIMARY_ADMIN_EMAIL = "descentcafe@gmail.com";
 
+// Server-side admin check that reads user_roles with the service-role client.
+// Used instead of the has_role RPC so the RPC does not need to be exposed to
+// signed-in users over the API.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function assertAdmin(admin: any, userId: string) {
+  const { data } = await admin
+    .from("user_roles")
+    .select("user_id")
+    .eq("user_id", userId)
+    .eq("role", "admin")
+    .maybeSingle();
+  if (!data) throw new Error("Forbidden");
+}
+
 // Ensures the signed-in user is granted the admin role when their email matches
 // the cafe's primary owner account. Safe to call on every login: it only acts
 // for the one hard-coded owner email and is a no-op for everyone else.
@@ -30,90 +44,32 @@ export const ensurePrimaryAdmin = createServerFn({ method: "POST" })
     return { granted: true };
   });
 
-// One-time bootstrap: the first signed-in user who calls this becomes admin.
-// Once an admin exists, only existing admins get a success response.
+// Owner-verified bootstrap: only the signed-in primary owner account can grant
+// itself the admin role. This mirrors ensurePrimaryAdmin and is a no-op for
+// anyone else, so there is no open path to admin takeover.
 export const claimAdmin = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
+    const email = String(
+      (context.claims as { email?: string }).email ?? "",
+    ).toLowerCase();
+    if (email !== PRIMARY_ADMIN_EMAIL) {
+      throw new Error("Only the cafe owner account can claim admin access.");
+    }
+
     const { supabaseAdmin } = await import(
       "@/integrations/supabase/client.server"
     );
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const admin = supabaseAdmin as any;
 
-    const { data: admins } = await admin
+    await admin
       .from("user_roles")
-      .select("user_id")
-      .eq("role", "admin");
-
-    if (admins && admins.length > 0) {
-      const already = admins.some(
-        (a: { user_id: string }) => a.user_id === context.userId,
+      .upsert(
+        { user_id: context.userId, role: "admin" },
+        { onConflict: "user_id,role" },
       );
-      if (already) return { granted: true, already: true };
-      throw new Error("An admin already exists for this cafe.");
-    }
-
-    await admin
-      .from("user_roles")
-      .insert({ user_id: context.userId, role: "admin" });
-    return { granted: true, already: false };
-  });
-
-// One-time bootstrap that creates the very first admin account with a chosen
-// email + password. Refuses to run once any admin already exists, so the
-// public endpoint cannot be abused after initial setup.
-export const seedAdmin = createServerFn({ method: "POST" })
-  .inputValidator((d: { email: string; password: string }) => {
-    if (!d?.email || !d?.password || d.password.length < 6) {
-      throw new Error("Email and a 6+ character password are required.");
-    }
-    return { email: d.email.trim().toLowerCase(), password: d.password };
-  })
-  .handler(async ({ data }) => {
-    const { supabaseAdmin } = await import(
-      "@/integrations/supabase/client.server"
-    );
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const admin = supabaseAdmin as any;
-
-    const { data: admins } = await admin
-      .from("user_roles")
-      .select("user_id")
-      .eq("role", "admin");
-    if (admins && admins.length > 0) {
-      throw new Error("An admin already exists. Bootstrap is closed.");
-    }
-
-    // Try to find an existing user with this email first.
-    let userId: string | undefined;
-    const { data: list } = await admin.auth.admin.listUsers({
-      page: 1,
-      perPage: 1000,
-    });
-    const existing = list?.users?.find(
-      (u: { email?: string }) => u.email?.toLowerCase() === data.email,
-    );
-    if (existing) {
-      userId = existing.id;
-      await admin.auth.admin.updateUserById(userId, {
-        password: data.password,
-      });
-    } else {
-      const { data: created, error } = await admin.auth.admin.createUser({
-        email: data.email,
-        password: data.password,
-        email_confirm: true,
-        user_metadata: { full_name: "Descent Cafe Admin" },
-      });
-      if (error) throw new Error(error.message);
-      userId = created.user.id;
-    }
-
-    await admin
-      .from("user_roles")
-      .upsert({ user_id: userId, role: "admin" }, { onConflict: "user_id,role" });
-    return { ok: true, userId };
+    return { granted: true };
   });
 
 // Admin-only: grant or revoke a role for a user identified by email.
@@ -130,17 +86,12 @@ export const setUserRole = createServerFn({ method: "POST" })
     },
   )
   .handler(async ({ data, context }) => {
-    const { data: isAdmin } = await context.supabase.rpc("has_role", {
-      _user_id: context.userId,
-      _role: "admin",
-    });
-    if (!isAdmin) throw new Error("Forbidden");
-
     const { supabaseAdmin } = await import(
       "@/integrations/supabase/client.server"
     );
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const admin = supabaseAdmin as any;
+    await assertAdmin(admin, context.userId);
 
     const { data: list } = await admin.auth.admin.listUsers({
       page: 1,
@@ -190,17 +141,12 @@ export const createRider = createServerFn({ method: "POST" })
     },
   )
   .handler(async ({ data, context }) => {
-    const { data: isAdmin } = await context.supabase.rpc("has_role", {
-      _user_id: context.userId,
-      _role: "admin",
-    });
-    if (!isAdmin) throw new Error("Forbidden");
-
     const { supabaseAdmin } = await import(
       "@/integrations/supabase/client.server"
     );
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const admin = supabaseAdmin as any;
+    await assertAdmin(admin, context.userId);
 
     const { data: created, error } = await admin.auth.admin.createUser({
       email: data.email,
@@ -237,17 +183,12 @@ export const createRider = createServerFn({ method: "POST" })
 export const listTeam = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
-    const { data: isAdmin } = await context.supabase.rpc("has_role", {
-      _user_id: context.userId,
-      _role: "admin",
-    });
-    if (!isAdmin) throw new Error("Forbidden");
-
     const { supabaseAdmin } = await import(
       "@/integrations/supabase/client.server"
     );
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const admin = supabaseAdmin as any;
+    await assertAdmin(admin, context.userId);
 
     const { data: roleRows } = await admin
       .from("user_roles")
