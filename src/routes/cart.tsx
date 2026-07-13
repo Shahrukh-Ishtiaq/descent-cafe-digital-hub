@@ -63,7 +63,7 @@ function CartPage() {
     );
   };
 
-  const placeOrder = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user) {
       toast.error("Please sign in to place your order.");
