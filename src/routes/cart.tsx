@@ -138,7 +138,7 @@ function CartPage() {
             ))}
           </div>
 
-          <form onSubmit={placeOrder} className="h-fit space-y-4 rounded-2xl border border-border bg-card p-6 shadow-card">
+          <form onSubmit={handleSubmit} className="h-fit space-y-4 rounded-2xl border border-border bg-card p-6 shadow-card">
             <h2 className="font-display text-xl font-bold text-foreground">Delivery details</h2>
             <div className="space-y-1.5">
               <Label htmlFor="cname">Full name</Label>
