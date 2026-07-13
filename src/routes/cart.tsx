@@ -2,6 +2,7 @@ import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { Minus, Plus, Trash2, ShoppingBag, MapPin, LocateFixed } from "lucide-react";
 import { toast } from "sonner";
+import { useServerFn } from "@tanstack/react-start";
 import { SiteLayout } from "@/components/SiteLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,9 +10,9 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useCart } from "@/lib/cart";
 import { useAuth } from "@/lib/auth";
-import { sb } from "@/lib/db";
 import { formatPrice, CAFE } from "@/lib/constants";
 import { useDeliveryFee } from "@/lib/settings";
+import { placeOrder } from "@/lib/orders.functions";
 
 export const Route = createFileRoute("/cart")({
   head: () => ({ meta: [{ title: "Your Cart — Descent Cafe" }] }),
@@ -23,6 +24,7 @@ function CartPage() {
   const { user, profile } = useAuth();
   const navigate = useNavigate();
   const DELIVERY_FEE = useDeliveryFee();
+  const submitOrder = useServerFn(placeOrder);
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [address, setAddress] = useState("");
@@ -71,61 +73,19 @@ function CartPage() {
     if (items.length === 0) return;
     setPlacing(true);
     try {
-      // Re-check live stock so customers can't order sold-out items.
-      const ids = items.map((i) => i.id);
-      const { data: live, error: stockErr } = await sb
-        .from("products")
-        .select("id, name, is_available, stock_quantity")
-        .in("id", ids);
-      if (stockErr) throw stockErr;
-      const blocked = items.filter((i) => {
-        const p = (live ?? []).find(
-          (row: { id: string }) => row.id === i.id,
-        );
-        return !p || !p.is_available || p.stock_quantity < i.quantity;
-      });
-      if (blocked.length > 0) {
-        toast.error(
-          `Sorry, these are no longer available: ${blocked
-            .map((b) => b.name)
-            .join(", ")}. Please update your cart.`,
-        );
-        setPlacing(false);
-        return;
-      }
-
-      const grand = total + DELIVERY_FEE;
-      const { data: order, error } = await sb
-        .from("orders")
-        .insert({
-          user_id: user.id,
+      // The server recomputes item prices, delivery fee and the grand total
+      // from the database, so clients cannot tamper with what they pay.
+      await submitOrder({
+        data: {
+          items: items.map((i) => ({ id: i.id, quantity: i.quantity })),
           customer_name: name.trim(),
           phone: phone.trim(),
           address: address.trim(),
           notes: notes.trim() || null,
-          total: grand,
-          status: "pending",
           latitude: coords?.lat ?? null,
           longitude: coords?.lng ?? null,
-          location_label: coords ? `${coords.lat},${coords.lng}` : null,
-        })
-        .select()
-        .single();
-      if (error) throw error;
-
-      const { error: itemsError } = await sb.from("order_items").insert(
-        items.map((i) => ({
-          order_id: order.id,
-          product_id: i.id,
-          name: i.name,
-          price: i.price,
-          quantity: i.quantity,
-        })),
-      );
-      if (itemsError) throw itemsError;
-
-      // keep customer profile updated for next time
-      await sb.from("profiles").update({ full_name: name.trim(), phone: phone.trim(), address: address.trim() }).eq("id", user.id);
+        },
+      });
 
       clear();
       toast.success("Order placed! We'll start preparing it right away.");
